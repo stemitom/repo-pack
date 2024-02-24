@@ -1,20 +1,15 @@
-package repopack
+package parse
 
 import (
 	"fmt"
 	"net/url"
 	"regexp"
+
+	model "repo-pack/model"
 )
 
-type RepoURLComponents struct {
-	Owner      string
-	Repository string
-	Ref        string
-	Dir        string
-}
-
-// ParseRepoURL extracts user, repository, ref, and dir from the URL
-func ParseRepoURL(urlStr string) (urlComponents RepoURLComponents, err error) {
+// ParseRepoURL validates that URL is valid and then extracts user, repository, ref, and directory
+func ParseRepoURL(urlStr string) (urlComponents model.RepoURLComponents, err error) {
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
 		err = fmt.Errorf("invalid URL: %s", urlStr)
@@ -35,7 +30,7 @@ func ParseRepoURL(urlStr string) (urlComponents RepoURLComponents, err error) {
 	ref := match[3]
 	dir := match[4]
 
-	urlComponents = RepoURLComponents{
+	urlComponents = model.RepoURLComponents{
 		Owner:      owner,
 		Repository: repository,
 		Ref:        ref,
