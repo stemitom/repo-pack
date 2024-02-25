@@ -3,6 +3,7 @@ package gh
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,6 +27,8 @@ type TreeResponse struct {
 	Tree      []Item  `json:"tree"`
 	Truncated bool    `json:"truncated"`
 }
+
+var ErrNotFound = errors.New("not found")
 
 // API makes a GET request to the GitHub API with the given endpoint and optional authentication token.
 // It returns the response body as a byte slice or an error if the request fails.
@@ -145,31 +148,37 @@ func ViaTreesAPI(
 	return files, truncated, nil
 }
 
-func repoListingSlashBranchSupport(ctx context.Context, ref string, dir string, components model.RepoURLComponents) ([]string, string, error) {
+func RepoListingSlashBranchSupport(ctx context.Context, components *model.RepoURLComponents, token string) ([]string, string, error) {
 	var files []string
 	var isTruncated bool
 
-	decodedDir, _ := url.QueryUnescape(dir)
+	ref := components.Ref
+	dir := components.Dir
+
+	decodedDir, err := url.QueryUnescape(dir)
+	if err != nil {
+		return nil, "", fmt.Errorf("error decoding: %s", dir)
+	}
+
 	dirParts := strings.Split(decodedDir, "/")
 
 	for len(dirParts) > 0 {
-		content, truncated, err := ViaTreesAPI(ctx, components, "")
+		content, truncated, err := ViaTreesAPI(ctx, *components, token)
 		if err == nil {
 			files = content
 			isTruncated = truncated
 			break
-		} else if err.Error() == "Not Found" {
+		} else if errors.Is(err, ErrNotFound) {
 			ref = path.Join(ref, dirParts[0])
 			dirParts = dirParts[1:]
 			components.Dir = strings.Join(dirParts, "/")
-			components.Ref = ref
 		} else {
 			return nil, "", err
 		}
 	}
 
 	if len(files) == 0 && isTruncated {
-		files, err := ViaContentsAPI(ctx, components, "")
+		files, err := ViaContentsAPI(ctx, *components, token)
 		if err != nil {
 			return nil, "", err
 		}

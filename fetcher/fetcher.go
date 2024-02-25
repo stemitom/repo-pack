@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"repo-pack/model"
 )
 
 var (
@@ -31,8 +33,8 @@ type RepoInfo struct {
 }
 
 // FetchRepoIsPrivate checks if a repository is private or not on GitHub.
-func FetchRepoIsPrivate(ctx context.Context, owner, repository, token string) (bool, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repository)
+func FetchRepoIsPrivate(ctx context.Context, components *model.RepoURLComponents, token string) (bool, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s", components.Owner, components.Repository)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return false, err
@@ -50,7 +52,7 @@ func FetchRepoIsPrivate(ctx context.Context, owner, repository, token string) (b
 
 	switch resp.StatusCode {
 	case http.StatusNotFound:
-		return false, fmt.Errorf("repo not found: %s/%s", owner, repository)
+		return false, fmt.Errorf("repo not found: %s/%s", components.Owner, components.Repository)
 	case http.StatusUnauthorized:
 		return false, fmt.Errorf("invalid token: %s", token)
 	case http.StatusForbidden:
@@ -75,7 +77,8 @@ func FetchRepoIsPrivate(ctx context.Context, owner, repository, token string) (b
 // If the Content-Length is between 128 and 140 bytes (inclusive) and the response body starts with
 // "version https://git-lfs.github.com/spec/v1", it returns true.
 func maybeLfsResponse(res *http.Response) bool {
-	if contentLength, err := strconv.Atoi(res.Header.Get("Content-Length")); err == nil && 128 < contentLength && contentLength < 140 {
+	if contentLength, err := strconv.Atoi(res.Header.Get("Content-Length")); err == nil && 128 < contentLength &&
+		contentLength < 140 {
 		bufr := make([]byte, 40)
 		_, err := io.ReadFull(res.Body, bufr)
 		if err != nil {
@@ -134,41 +137,57 @@ func fetchPrivateFile(ctx context.Context, file FileInfo, token string) (io.Read
 }
 
 // fetchPublicFile downloads a file from a public GitHub repository, handling Git LFS if necessary.
-func fetchPublicFile(ctx context.Context, file FileInfo, user, repository, ref string) ([]byte, error) {
-	rawURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s/%s", user, repository, ref, url.PathEscape(file.Path))
+func FetchPublicFile(ctx context.Context, path string, components *model.RepoURLComponents) ([]byte, error) {
+	user := components.Owner
+	repository := components.Repository
+	ref := components.Ref
+
+	rawURL := fmt.Sprintf(
+		"https://raw.githubusercontent.com/%s/%s/%s/%s",
+		user,
+		repository,
+		ref,
+		url.PathEscape(path),
+	)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating request for %s: %w", file.Path, err)
+		return nil, fmt.Errorf("creating request for %s: %w", path, err)
 	}
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP error for %s: %w", file.Path, err)
+		return nil, fmt.Errorf("HTTP error for %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 
 	if maybeLfsResponse(resp) {
-		lfsURL := fmt.Sprintf("https://media.githubusercontent.com/media/%s/%s/%s/%s", user, repository, ref, url.PathEscape(file.Path))
+		lfsURL := fmt.Sprintf(
+			"https://media.githubusercontent.com/media/%s/%s/%s/%s",
+			user,
+			repository,
+			ref,
+			url.PathEscape(path),
+		)
 		req, err = http.NewRequestWithContext(ctx, "GET", lfsURL, nil)
 		if err != nil {
-			return nil, fmt.Errorf("creating LFS request for %s: %w", file.Path, err)
+			return nil, fmt.Errorf("creating LFS request for %s: %w", path, err)
 		}
 		resp, err = client.Do(req)
 		if err != nil {
-			return nil, fmt.Errorf("HTTP error for LFS %s: %w", file.Path, err)
+			return nil, fmt.Errorf("HTTP error for LFS %s: %w", path, err)
 		}
 		defer resp.Body.Close()
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %s for %s", resp.Status, file.Path)
+		return nil, fmt.Errorf("HTTP %s for %s", resp.Status, path)
 	}
 
 	content, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error reading response body for %s: %w", file.Path, err)
+		return nil, fmt.Errorf("error reading response body for %s: %w", path, err)
 	}
 
 	return content, nil
