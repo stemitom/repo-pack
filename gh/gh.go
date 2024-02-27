@@ -6,12 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
 
-	model "repo-pack/model"
+	"repo-pack/model"
 )
 
 type Item struct {
@@ -148,6 +149,9 @@ func ViaTreesAPI(
 	return files, truncated, nil
 }
 
+// RepoListingSlashBranchSupport fetches repository listing recursively.
+// It uses the provided context, repository components, and token for authentication.
+// It returns the list of files, the final reference, and an error (if any).
 func RepoListingSlashBranchSupport(ctx context.Context, components *model.RepoURLComponents, token string) ([]string, string, error) {
 	var files []string
 	var isTruncated bool
@@ -185,5 +189,6 @@ func RepoListingSlashBranchSupport(ctx context.Context, components *model.RepoUR
 		return files, ref, nil
 	}
 
+	log.Println(components.Dir)
 	return files, ref, nil
 }

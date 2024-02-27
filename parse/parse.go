@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"regexp"
 
-	model "repo-pack/model"
+	"repo-pack/model"
 )
 
 // ParseRepoURL validates that URL is valid and then extracts user, repository, ref, and directory

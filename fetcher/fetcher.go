@@ -172,7 +172,7 @@ func FetchPublicFile(ctx context.Context, path string, components *model.RepoURL
 		)
 		req, err = http.NewRequestWithContext(ctx, "GET", lfsURL, nil)
 		if err != nil {
-			return nil, fmt.Errorf("creating LFS request for %s: %w", path, err)
+			return nil, fmt.Errorf("error creating LFS request for %s: %w", path, err)
 		}
 		resp, err = client.Do(req)
 		if err != nil {
