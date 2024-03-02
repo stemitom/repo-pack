@@ -5,14 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
-	"repo-pack/fetcher"
 	"repo-pack/gh"
-	"repo-pack/parse"
+	"repo-pack/helpers"
 )
 
 func main() {
@@ -22,89 +19,72 @@ func main() {
 }
 
 func run() error {
-	ctx := context.Background()
-
+	// Parse flags
 	repoURL := flag.String("url", "", "GitHub repository URL")
 	token := flag.String("token", "", "GitHub personal access token")
 	flag.Parse()
 
+	// Display help if required flags are missing
 	if *repoURL == "" {
-		return fmt.Errorf("usage: %s --url <repository_url> [--token <personal_access_token>]", os.Args[0])
+		flag.Usage()
+		return flag.ErrHelp
 	}
 
-	components, err := parse.ParseRepoURL(*repoURL)
+	// Parse repository URL
+	components, err := helpers.ParseRepoURL(*repoURL)
 	if err != nil {
 		return fmt.Errorf("failed to parse repository URL: %v", err)
 	}
 
+	// Check if repository is private
+	ctx := context.Background()
+	gh.FetchRepoIsPrivate(ctx, &components, *token)
+
+	// Fetch files from repository
 	files, _, err := gh.RepoListingSlashBranchSupport(ctx, &components, *token)
 	if err != nil {
-		return fmt.Errorf("failed to get files via contents api: %v", err)
+		return fmt.Errorf("failed to get files via contents API: %v", err)
 	}
 
-	filesLength := len(files)
+	// Display information about the repository
 	baseDir := filepath.Base(components.Dir)
+	fmt.Printf("[-] Repository: %s/%s\n", components.Owner, components.Repository)
+	fmt.Printf("[-] GitHub Directory: %s\n", components.Dir)
+	fmt.Printf("[-] Fetching %d files\n", len(files))
 
-	fmt.Printf("[-] Downloading %d files\n", filesLength)
-	fmt.Printf("[-] Github Directory: %s\n", components.Dir)
-
+	// Concurrently download files
 	var wg sync.WaitGroup
-	wg.Add(filesLength)
 	errorsCh := make(chan error, len(files))
 
 	for _, file := range files {
-		// TODO: isPrivate should be used once privatefile function can be properly tested
+		wg.Add(1)
 		go func(file string) {
 			defer wg.Done()
 
-			content, err := fetcher.FetchPublicFile(ctx, file, &components)
+			content, err := gh.FetchPublicFile(ctx, file, &components)
 			if err != nil {
 				errorsCh <- fmt.Errorf("error fetching %s: %v", file, err)
 				return
 			}
 
-			if err := saveFile(baseDir, file, content); err != nil {
+			if err := helpers.SaveFile(baseDir, file, content); err != nil {
 				errorsCh <- err
 				return
 			}
 		}(file)
 	}
 
-	wg.Wait()
-	close(errorsCh)
+	// Wait for all downloads to complete
+	go func() {
+		wg.Wait()
+		close(errorsCh)
+	}()
 
+	// Log any errors encountered during downloads
 	for err := range errorsCh {
-		// TODO: Let error be easily identifiable
 		log.Println(err)
 	}
 
-	fmt.Printf("Downloaded :%d files\n", filesLength)
-	return nil
-}
-
-func saveFile(baseDir string, filePath string, content []byte) error {
-	currentDir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("error getting current working directory: %v", err)
-	}
-
-	baseDirIndex := strings.Index(filePath, baseDir+"/")
-	if baseDirIndex == -1 {
-		return fmt.Errorf("base directory %s not found in file path %s", baseDir, filePath)
-	}
-
-	adjustedFilePath := filePath[baseDirIndex:]
-	fullPath := filepath.Join(currentDir, adjustedFilePath)
-
-	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil && !os.IsExist(err) {
-		return fmt.Errorf("error creating output folder for %s: %w", fullPath, err)
-	}
-
-	if err := os.WriteFile(fullPath, content, 0o644); err != nil {
-		return fmt.Errorf("error saving file %s: %w", fullPath, err)
-	}
-
-	fmt.Printf("[-] Downloaded: %s\n", adjustedFilePath)
+	fmt.Printf("[-] Successfully downloaded %d files\n", len(files))
 	return nil
 }

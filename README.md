@@ -1,5 +1,18 @@
 # Repo-Pack
 
+<!--toc:start-->
+
+- [Repo-Pack](#repo-pack)
+  - [Features](#features)
+  - [Requirements](#requirements)
+  - [Installation](#installation)
+  - [Usage](#usage)
+    - [Example](#example)
+  - [Configuration](#configuration)
+  - [Contributing](#contributing)
+  - [License](#license)
+  <!--toc:end-->
+
 Repo-Pack is a Go-based tool designed to download files from a specified GitHub repository directory, preserving the directory structure relative to a specified base directory. It's particularly useful for cloning parts of a repository or extracting specific directories without the need to clone the entire project.
 
 ## Features
@@ -54,3 +67,4 @@ Contributions are welcome! Please feel free to submit a pull request or open an 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
