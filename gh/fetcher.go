@@ -11,11 +11,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"repo-pack/model"
-
-	"github.com/cheggaaa/pb/v3"
 )
 
 // Error constants
@@ -150,22 +147,20 @@ func FetchPublicFile(ctx context.Context, path string, components *model.RepoURL
 		return nil, fmt.Errorf("HTTP %s for %s", resp.Status, path)
 	}
 
-	// Create a progress bar based on the response content length
-	bar := pb.Full.Start64(resp.ContentLength)
-	bar.Set("prefix", fmt.Sprintf("[-] %s:", path))
-	bar.Set("suffix", "MB")
-	bar.SetRefreshRate(time.Millisecond * 10)
+	buffer := make([]byte, 1024*1024)
+	var downloadedContent []byte
 
-	// Create a proxy reader to update the progress bar
-	reader := bar.NewProxyReader(resp.Body)
+	for {
+		n, err := resp.Body.Read(buffer)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, fmt.Errorf("error reading response body for %s: %w", path, err)
+		}
 
-	// Read all content from the response
-	content, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response body for %s: %w", path, err)
+		downloadedContent = append(downloadedContent, buffer[:n]...)
 	}
 
-	// Finish the progress bar
-	bar.Finish()
-	return content, nil
+	return downloadedContent, nil
 }

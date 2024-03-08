@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"path"
@@ -189,6 +188,5 @@ func RepoListingSlashBranchSupport(ctx context.Context, components *model.RepoUR
 		return files, ref, nil
 	}
 
-	log.Println(components.Dir)
 	return files, ref, nil
 }
