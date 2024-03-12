@@ -23,7 +23,7 @@ $ARCH = $env:PROCESSOR_ARCHITECTURE
 $KERNEL = "Windows"
 
 Write-Host "Downloading the binary..." -ForegroundColor $GREEN
-$DOWNLOAD_URL = "https://github.com/$REPO/releases/download/$LATEST_VERSION/${BINARY_NAME}-${KERNEL}-${ARCH}.zip"
+$DOWNLOAD_URL = "https://github.com/$REPO/releases/download/$LATEST_VERSION/${BINARY_NAME}_${KERNEL}_${ARCH}.zip"
 Invoke-WebRequest -Uri $DOWNLOAD_URL -OutFile "${BINARY_NAME}.zip"
 
 Write-Host "Extracting the binary..." -ForegroundColor $GREEN

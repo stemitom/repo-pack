@@ -27,3 +27,5 @@ tests/
 repo-pack
 
 dist/
+
+.DS_Store

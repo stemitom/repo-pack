@@ -25,7 +25,7 @@ ARCH=$(uname -m)
 KERNEL=$(uname -s)
 
 echo "${GREEN}Downloading the binary...${NC}"
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${LATEST_VERSION}/${BINARY_NAME}-${KERNEL}-${ARCH}.tar.gz"
+DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${LATEST_VERSION}/${BINARY_NAME}_${KERNEL}_${ARCH}.tar.gz"
 curl -# -L -o "${BINARY_NAME}.tar.gz" "${DOWNLOAD_URL}"
 
 echo "${GREEN}Extracting the binary...${NC}"
