@@ -2,12 +2,14 @@ package helpers
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-func SaveFile(baseDir string, filePath string, content []byte) error {
+func SaveFile(baseDir string, filePath string, reader io.ReadCloser) error {
+	defer reader.Close()
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("error getting current working directory: %v", err)
@@ -26,9 +28,16 @@ func SaveFile(baseDir string, filePath string, content []byte) error {
 		return fmt.Errorf("error creating output folder for %s: %w", fullPath, err)
 	}
 
-	if err := os.WriteFile(fullPath, content, 0o644); err != nil {
-		return fmt.Errorf("error saving file %s: %w", fullPath, err)
+	file, err := os.Create(fullPath)
+	if err != nil {
+		return fmt.Errorf("error creating file %s: %v", fullPath, err)
 	}
 
+	_, err = io.Copy(file, reader)
+	if err != nil {
+		return fmt.Errorf("error copying content to file %s: %v", fullPath, err)
+	}
+
+	defer file.Close()
 	return nil
 }

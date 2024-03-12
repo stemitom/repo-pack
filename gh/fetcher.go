@@ -9,9 +9,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"repo-pack/helpers"
 	"repo-pack/model"
 )
 
@@ -23,12 +25,6 @@ var (
 	ErrFetchError         = errors.New("could not obtain repository data from the GitHub API")
 )
 
-// FileInfo represents information about a file
-type FileInfo struct {
-	URL  string `json:"url"`
-	Path string `json:"path"`
-}
-
 // RepoInfo represents information about a repository
 type RepoInfo struct {
 	Private bool `json:"private"`
@@ -37,14 +33,12 @@ type RepoInfo struct {
 // FetchRepoIsPrivate checks if a repository is private or not on GitHub.
 func FetchRepoIsPrivate(ctx context.Context, components *model.RepoURLComponents, token string) (bool, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s", components.Owner, components.Repository)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return false, err
 	}
 
-	if token != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -98,8 +92,8 @@ func isLfsResponse(res *http.Response) bool {
 	return false
 }
 
-// FetchPublicFile downloads a file from a public GitHub repository, handling Git LFS if necessary.
-func FetchPublicFile(ctx context.Context, path string, components *model.RepoURLComponents) ([]byte, error) {
+// FetchPublicFile downloads a file from a public GitHub repository, handling Git LFS if necessary and saves it.
+func FetchPublicFile(ctx context.Context, path string, components *model.RepoURLComponents) error {
 	user := components.Owner
 	repository := components.Repository
 	ref := components.Ref
@@ -112,17 +106,21 @@ func FetchPublicFile(ctx context.Context, path string, components *model.RepoURL
 		url.PathEscape(path),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating request for %s: %w", path, err)
+		return fmt.Errorf("creating request for %s: %w", path, err)
 	}
 
-	client := http.DefaultClient
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP error for %s: %w", path, err)
+		return fmt.Errorf("HTTP error for %s: %w", path, err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return fmt.Errorf("HTTP %s for %s", resp.Status, path)
+	}
 
 	if isLfsResponse(resp) {
 		lfsURL := fmt.Sprintf(
@@ -132,35 +130,23 @@ func FetchPublicFile(ctx context.Context, path string, components *model.RepoURL
 			ref,
 			url.PathEscape(path),
 		)
-		req, err = http.NewRequestWithContext(ctx, "GET", lfsURL, nil)
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, lfsURL, nil)
 		if err != nil {
-			return nil, fmt.Errorf("error creating LFS request for %s: %w", path, err)
+			return fmt.Errorf("error creating LFS request for %s: %w", path, err)
 		}
-		resp, err = client.Do(req)
+		resp, err = http.DefaultClient.Do(req)
 		if err != nil {
-			return nil, fmt.Errorf("HTTP error for LFS %s: %w", path, err)
+			resp.Body.Close()
+			return fmt.Errorf("HTTP error for LFS %s: %w", path, err)
 		}
-		defer resp.Body.Close()
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %s for %s", resp.Status, path)
+	err = helpers.SaveFile(filepath.Base(components.Dir), path, resp.Body)
+	if err != nil {
+		resp.Body.Close()
+		return fmt.Errorf("error saving file %s %v", path, err)
 	}
 
-	buffer := make([]byte, 1024*1024)
-	var downloadedContent []byte
-
-	for {
-		n, err := resp.Body.Read(buffer)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, fmt.Errorf("error reading response body for %s: %w", path, err)
-		}
-
-		downloadedContent = append(downloadedContent, buffer[:n]...)
-	}
-
-	return downloadedContent, nil
+	return nil
 }
+
