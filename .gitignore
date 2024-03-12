@@ -25,3 +25,7 @@ tests/
 
 # build file
 repo-pack
+
+dist/
+
+.DS_Store
