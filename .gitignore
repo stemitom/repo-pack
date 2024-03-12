@@ -25,3 +25,5 @@ tests/
 
 # build file
 repo-pack
+
+dist/
