@@ -44,6 +44,9 @@ func run() error {
 	fmt.Printf("[-] GitHub Directory: %s\n", components.Dir)
 	fmt.Printf("[-] Fetching %d files\n", len(files))
 
+	bar := &helpers.Bar{}
+	bar.Config(0, int64(len(files)))
+
 	var wg sync.WaitGroup
 	errorsCh := make(chan error, len(files))
 
@@ -57,13 +60,17 @@ func run() error {
 				errorsCh <- fmt.Errorf("error fetching %s: %v", file, err)
 				return
 			}
+			bar.Update(bar.Cur + 1)
 		}(file)
 	}
 
 	go func() {
 		wg.Wait()
 		close(errorsCh)
+		bar.Finish()
 	}()
+
+	// bar.Finish()
 
 	for err := range errorsCh {
 		log.Println(err)
