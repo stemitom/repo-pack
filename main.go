@@ -45,7 +45,7 @@ func run() error {
 	fmt.Printf("[-] Fetching %d files\n", len(files))
 
 	bar := &helpers.Bar{}
-	bar.Config(0, int64(len(files)))
+	bar.Config(0, int64(len(files)), "")
 
 	var wg sync.WaitGroup
 	errorsCh := make(chan error, len(files))
@@ -70,12 +70,9 @@ func run() error {
 		bar.Finish()
 	}()
 
-	// bar.Finish()
-
 	for err := range errorsCh {
 		log.Println(err)
 	}
 
-	fmt.Printf("[-] Successfully downloaded %d files\n", len(files))
 	return nil
 }

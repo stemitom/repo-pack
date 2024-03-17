@@ -1,45 +1,59 @@
 package helpers
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 type Bar struct {
-	rate    string
-	graph   string
-	percent int64
-	Cur     int64
-	total   int64
+	rate        string
+	graph       string
+	percent     int64
+	Cur         int64
+	total       int64
+	width       int
+	startTime   time.Time
+	description string
 }
 
-func (bar *Bar) Config(start, total int64) {
+func (bar *Bar) Config(start, total int64, description string) {
 	bar.Cur = start
 	bar.total = total
-	if bar.graph == "" {
-		bar.graph = "*"
-	}
-	bar.percent = bar.getPercent()
-	for i := 0; i < int(bar.percent); i += 2 {
-		bar.rate += bar.graph
-	}
+	bar.width = 50
+	bar.graph = "█"
+	bar.description = description
+	bar.startTime = time.Now()
+	bar.updateRate()
 }
 
 func (bar *Bar) getPercent() int64 {
-	return int64((float32(bar.Cur) / float32(bar.total)) * 100)
+	return int64((float64(bar.Cur) / float64(bar.total)) * 100)
+}
+
+func (bar *Bar) updateRate() {
+	completedWidth := int((float64(bar.Cur) / float64(bar.total)) * float64(bar.width))
+	bar.rate = strings.Repeat(bar.graph, completedWidth) + strings.Repeat(" ", bar.width-completedWidth)
 }
 
 func (bar *Bar) Update(cur int64) {
+	bar.Cur = cur
 	bar.Play(cur)
 }
 
 func (bar *Bar) Play(cur int64) {
 	bar.Cur = cur
-	last := bar.percent
+	lastPercent := bar.percent
 	bar.percent = bar.getPercent()
-	if bar.percent != last && bar.percent%2 == 0 {
-		bar.rate += bar.graph
+	if bar.percent != lastPercent {
+		bar.updateRate()
 	}
-	fmt.Printf("\r[%-50s]%3d%% %8d/%d", bar.rate, bar.percent, bar.Cur, bar.total)
+	elapsedTime := time.Since(bar.startTime)
+	itemsPerSec := float64(bar.Cur) / elapsedTime.Seconds()
+	fmt.Printf("\r%s |%-50s| %3d%% %3d/%d %.2f it/s", bar.description, bar.rate, bar.percent, bar.Cur, bar.total, itemsPerSec)
 }
 
 func (bar *Bar) Finish() {
-	fmt.Println()
+	bar.updateRate()
+	fmt.Printf("\r%s |%-50s| 100%% %3d/%d\n", bar.description, bar.rate, bar.total, bar.total)
 }
