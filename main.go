@@ -45,11 +45,12 @@ func run() error {
 	fmt.Printf("[-] Fetching %d files\n", len(files))
 
 	bar := &helpers.Bar{}
-	bar.Config(0, int64(len(files)), "")
+	bar.Config(0, int64(len(files)), "[-] Progress: ")
 
 	var wg sync.WaitGroup
 	errorsCh := make(chan error, len(files))
 
+	// Use semaphores to manage the goroutines, this current implementation can affect performance if file number is too large
 	for _, file := range files {
 		wg.Add(1)
 		go func(file string) {
