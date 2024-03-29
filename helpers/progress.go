@@ -7,14 +7,14 @@ import (
 )
 
 type Bar struct {
+	startTime   time.Time
 	rate        string
 	graph       string
+	description string
 	percent     int64
 	Cur         int64
 	total       int64
 	width       int
-	startTime   time.Time
-	description string
 }
 
 func (bar *Bar) Config(start, total int64, description string) {
@@ -55,5 +55,6 @@ func (bar *Bar) Play(cur int64) {
 
 func (bar *Bar) Finish() {
 	bar.updateRate()
-	fmt.Printf("\r%s |%-50s| 100%% %3d/%d\n", bar.description, bar.rate, bar.total, bar.total)
+	elapsedTime := time.Since(bar.startTime)
+	fmt.Printf("\r%s |%-50s| 100%% %3d/%d  Time: %s\n", bar.description, bar.rate, bar.total, bar.total, elapsedTime.String())
 }
