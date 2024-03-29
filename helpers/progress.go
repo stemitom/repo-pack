@@ -56,5 +56,5 @@ func (bar *Bar) Play(cur int64) {
 func (bar *Bar) Finish() {
 	bar.updateRate()
 	elapsedTime := time.Since(bar.startTime)
-	fmt.Printf("\r%s |%-50s| 100%% %3d/%d  Time: %s\n", bar.description, bar.rate, bar.total, bar.total, elapsedTime.String())
+	fmt.Printf("\r%s |%-20s| 100%% %3d/%d  Time: %s\n", bar.description, bar.rate, bar.total, bar.total, elapsedTime.String())
 }
