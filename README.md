@@ -27,6 +27,13 @@ Repo-Pack is a Go-based tool designed to download files from a specified GitHub 
 
 ## Installation
 
+- For mac/linux:
+    `curl -LsSf https://dub.sh/repo-pack | sh`
+- For windows:
+    `curl -LsSf https://dub.sh/repo-pack-win | sh`
+
+## Building
+
 Clone the repository and build the binary:
 
 ```bash
