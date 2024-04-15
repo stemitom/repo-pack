@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// SaveFile saves file to a filepath and base directory
 func SaveFile(baseDir string, filePath string, reader io.ReadCloser) error {
 	defer reader.Close()
 	currentDir, err := os.Getwd()
@@ -24,8 +25,8 @@ func SaveFile(baseDir string, filePath string, reader io.ReadCloser) error {
 	fullPath := filepath.Join(currentDir, adjustedFilePath)
 
 	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil && !os.IsExist(err) {
-		return fmt.Errorf("error creating output folder for %s: %w", fullPath, err)
+	if makeDirErr := os.MkdirAll(dir, 0o755); makeDirErr != nil && !os.IsExist(makeDirErr) {
+		return fmt.Errorf("error creating output folder for %s: %w", fullPath, makeDirErr)
 	}
 
 	file, err := os.Create(fullPath)
