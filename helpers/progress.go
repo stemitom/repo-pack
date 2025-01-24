@@ -28,7 +28,6 @@ func (bar *Bar) Config(start, total int64, description string) {
 	bar.updateRate()
 }
 
-// SetStyle sets the progress bar style character
 func (bar *Bar) SetStyle(style string) {
 	if style != "" {
 		bar.graph = style
