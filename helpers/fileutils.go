@@ -33,12 +33,12 @@ func SaveFile(baseDir string, filePath string, reader io.ReadCloser) error {
 	if err != nil {
 		return fmt.Errorf("error creating file %s: %v", fullPath, err)
 	}
+	defer file.Close()
 
 	_, err = io.Copy(file, reader)
 	if err != nil {
 		return fmt.Errorf("error copying content to file %s: %v", fullPath, err)
 	}
 
-	defer file.Close()
 	return nil
 }
