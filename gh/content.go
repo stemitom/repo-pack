@@ -92,7 +92,9 @@ func ViaContentsAPI(ctx context.Context, urlComponents model.RepoURLComponents, 
 		case "file":
 			files = append(files, item.Path)
 		case "dir":
-			subFiles, err := ViaContentsAPI(ctx, urlComponents, token)
+			newComponents := urlComponents
+			newComponents.Dir = item.Path
+			subFiles, err := ViaContentsAPI(ctx, newComponents, token)
 			if err != nil {
 				return nil, err
 			}
