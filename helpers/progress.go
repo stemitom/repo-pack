@@ -15,6 +15,7 @@ type Bar struct {
 	Cur         int64
 	total       int64
 	width       int
+	lastUpdate  time.Time
 }
 
 func (bar *Bar) Config(start, total int64, description string) {
@@ -25,6 +26,13 @@ func (bar *Bar) Config(start, total int64, description string) {
 	bar.description = description
 	bar.startTime = time.Now()
 	bar.updateRate()
+}
+
+// SetStyle sets the progress bar style character
+func (bar *Bar) SetStyle(style string) {
+	if style != "" {
+		bar.graph = style
+	}
 }
 
 func (bar *Bar) getPercent() int64 {
@@ -45,16 +53,24 @@ func (bar *Bar) Play(cur int64) {
 	bar.Cur = cur
 	lastPercent := bar.percent
 	bar.percent = bar.getPercent()
+
+	// Reduce flickering
+	now := time.Now()
+	if now.Sub(bar.lastUpdate) < 100*time.Millisecond {
+		return
+	}
+	bar.lastUpdate = now
+
 	if bar.percent != lastPercent {
 		bar.updateRate()
 	}
 	elapsedTime := time.Since(bar.startTime)
 	itemsPerSec := float64(bar.Cur) / elapsedTime.Seconds()
-	fmt.Printf("\r%s |%-50s| %3d%% %3d/%d %.2f it/s", bar.description, bar.rate, bar.percent, bar.Cur, bar.total, itemsPerSec)
+	fmt.Printf("\r%s |%-50s| %3d%% %3d/%d  %.2f it/s", bar.description, bar.rate, bar.percent, bar.Cur, bar.total, itemsPerSec)
 }
 
 func (bar *Bar) Finish() {
 	bar.updateRate()
 	elapsedTime := time.Since(bar.startTime)
-	fmt.Printf("\r%s |%-20s| 100%% %3d/%d  Time: %s\n", bar.description, bar.rate, bar.total, bar.total, elapsedTime.String())
+	fmt.Printf("\r%s |%-50s| 100%% %3d/%d  Time: %s\n", bar.description, bar.rate, bar.total, bar.total, elapsedTime.String())
 }
