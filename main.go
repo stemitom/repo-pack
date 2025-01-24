@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 
+	"repo-pack/config"
 	"repo-pack/gh"
 	"repo-pack/helpers"
 )
@@ -18,13 +20,29 @@ func main() {
 }
 
 func run() error {
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("error loading config: %v", err)
+	}
+
 	repoURL := flag.String("url", "", "GitHub repository URL")
 	token := flag.String("token", "", "GitHub personal access token")
+	limit := flag.Int("limit", cfg.ConcurrentDownloadLimit, "Concurrent download limit")
+	style := flag.String("style", cfg.ProgressBarStyle, "Progress bar style")
 	flag.Parse()
 
 	if *repoURL == "" {
-		err := fmt.Errorf("missing argument for repoURL")
-		return err
+		return fmt.Errorf("missing argument for repoURL")
+	}
+
+	cfg.ConcurrentDownloadLimit = *limit
+	cfg.ProgressBarStyle = *style
+
+	if *token == "" {
+		tokenBytes, err := os.ReadFile(cfg.GithubTokenPath)
+		if err == nil {
+			*token = string(tokenBytes)
+		}
 	}
 
 	components, err := helpers.ParseRepoURL(*repoURL)
@@ -46,15 +64,20 @@ func run() error {
 
 	bar := &helpers.Bar{}
 	bar.Config(0, int64(len(files)), "[-] Progress: ")
+	bar.SetStyle(cfg.ProgressBarStyle)
 
 	var wg sync.WaitGroup
 	errorsCh := make(chan error, len(files))
+	sem := make(chan struct{}, cfg.ConcurrentDownloadLimit)
 
-	// Use semaphores to manage the goroutines, this current implementation can affect performance if file number is too large
 	for _, file := range files {
 		wg.Add(1)
 		go func(file string) {
-			defer wg.Done()
+			sem <- struct{}{}
+			defer func() {
+				<-sem
+				wg.Done()
+			}()
 
 			err := gh.FetchPublicFile(ctx, file, &components)
 			if err != nil {
