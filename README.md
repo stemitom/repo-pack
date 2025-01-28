@@ -47,11 +47,12 @@ go build -o repo-pack
 Run the tool with the required flags:
 
 ```bash
-./repo-pack --url <repository_url> [--token <personal_access_token>]
+./repo-pack --url <repository_url> [--limit <concurrent_download_limit>] [--style <progress_bar_style>] [--token <personal_access_token>]
 ```
 
 - `--url`: The full URL to the GitHub repository directory you wish to download.
 - `--token`: Your GitHub personal access token (optional, required for private repositories).
+- `--limit`: The amount of concurrent download limits (optional, default is 10).
 
 ### Example
 
