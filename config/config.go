@@ -17,7 +17,7 @@ type Config struct {
 // DefaultConfig returns the default configuration
 func DefaultConfig() Config {
 	return Config{
-		ConcurrentDownloadLimit: 10,
+		ConcurrentDownloadLimit: 5,
 		ProgressBarStyle:        "█",
 		GithubTokenPath:         filepath.Join(os.Getenv("HOME"), ".github", "token"),
 	}
