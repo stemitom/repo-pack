@@ -158,4 +158,3 @@ func FetchPublicFile(ctx context.Context, path string, components *model.RepoURL
 
 	return nil
 }
-

@@ -6,8 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"repo-pack/helpers"
 	"github.com/stretchr/testify/assert"
+	"repo-pack/helpers"
 )
 
 func TestBarConfig(t *testing.T) {
