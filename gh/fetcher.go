@@ -38,9 +38,11 @@ func FetchRepoIsPrivate(ctx context.Context, components *model.RepoURLComponents
 		return false, err
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	if token != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return false, err
 	}
@@ -55,6 +57,7 @@ func FetchRepoIsPrivate(ctx context.Context, components *model.RepoURLComponents
 		if resp.Header.Get("X-RateLimit-Remaining") == "0" {
 			return false, ErrRateLimitExceeded
 		}
+		return false, fmt.Errorf("HTTP 403 Forbidden - check repository access and rate limits")
 	case http.StatusOK:
 		var repoInfo RepoInfo
 		if err := json.NewDecoder(resp.Body).Decode(&repoInfo); err != nil {
@@ -62,38 +65,44 @@ func FetchRepoIsPrivate(ctx context.Context, components *model.RepoURLComponents
 		}
 		return repoInfo.Private, nil
 	default:
-		return false, ErrFetchError
+		return false, fmt.Errorf("%w: HTTP %d", ErrFetchError, resp.StatusCode)
 	}
-
-	return false, nil
 }
 
 // isLfsResponse checks if the HTTP response potentially contains a Git LFS response.
+// It peeks at the response body without consuming it, resetting it for subsequent reads.
 func isLfsResponse(res *http.Response) bool {
-	if contentLength, err := strconv.Atoi(res.Header.Get("Content-Length")); err == nil && 128 < contentLength &&
-		contentLength < 140 {
-		bufr := make([]byte, 40)
-		_, err := io.ReadFull(res.Body, bufr)
-		if err != nil {
-			return false
-		}
-
-		restOfBody, err := io.ReadAll(res.Body)
-		if err != nil {
-			return false
-		}
-
-		res.Body.Close()
-		fullBody := append(bufr, restOfBody...)
-		res.Body = io.NopCloser(bytes.NewReader(fullBody))
-
-		return strings.HasPrefix(string(bufr), "version https://git-lfs.github.com/spec/v1")
+	contentLength, err := strconv.Atoi(res.Header.Get("Content-Length"))
+	if err != nil || contentLength < 128 || contentLength > 140 {
+		return false
 	}
-	return false
+
+	// Peek at the beginning of the response
+	bufr := make([]byte, 40)
+	n, err := io.ReadFull(res.Body, bufr)
+	if err != nil && err != io.ErrUnexpectedEOF {
+		return false
+	}
+
+	// Read the rest of the body
+	restOfBody, err := io.ReadAll(res.Body)
+	if err != nil {
+		return false
+	}
+
+	// Check if this is an LFS response
+	isLfs := strings.HasPrefix(string(bufr[:n]), "version https://git-lfs.github.com/spec/v1")
+
+	// Reset the body for the caller to read
+	res.Body.Close()
+	fullBody := append(bufr, restOfBody...)
+	res.Body = io.NopCloser(bytes.NewReader(fullBody))
+
+	return isLfs
 }
 
 // FetchPublicFile downloads a file from a public GitHub repository, handling Git LFS if necessary and saves it.
-func FetchPublicFile(ctx context.Context, path string, components *model.RepoURLComponents) error {
+func FetchPublicFile(ctx context.Context, path string, components *model.RepoURLComponents, outputDir string) error {
 	user := components.Owner
 	repository := components.Repository
 	ref := components.Ref
@@ -111,7 +120,7 @@ func FetchPublicFile(ctx context.Context, path string, components *model.RepoURL
 		return fmt.Errorf("creating request for %s: %w", path, err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("HTTP error for %s: %w", path, err)
 	}
@@ -134,17 +143,17 @@ func FetchPublicFile(ctx context.Context, path string, components *model.RepoURL
 		if err != nil {
 			return fmt.Errorf("error creating LFS request for %s: %w", path, err)
 		}
-		resp, err = http.DefaultClient.Do(req)
+		resp, err = httpClient.Do(req)
 		if err != nil {
 			resp.Body.Close()
 			return fmt.Errorf("HTTP error for LFS %s: %w", path, err)
 		}
 	}
 
-	err = helpers.SaveFile(filepath.Base(components.Dir), path, resp.Body)
+	err = helpers.SaveFile(filepath.Base(components.Dir), path, resp.Body, outputDir)
 	if err != nil {
 		resp.Body.Close()
-		return fmt.Errorf("error saving file %s %v", path, err)
+		return fmt.Errorf("error saving file %s: %w", path, err)
 	}
 
 	return nil

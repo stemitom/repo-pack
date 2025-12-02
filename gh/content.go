@@ -10,9 +10,19 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"repo-pack/model"
 )
+
+var httpClient = &http.Client{
+	Timeout: 30 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+	},
+}
 
 type Item struct {
 	Type string `json:"type"`
@@ -43,14 +53,28 @@ func API(ctx context.Context, endpoint, token string) ([]byte, error) {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	}
 
-	client := http.DefaultClient
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == 403 {
+			rateLimitRemaining := resp.Header.Get("X-RateLimit-Remaining")
+			if rateLimitRemaining == "0" {
+				resetTime := resp.Header.Get("X-RateLimit-Reset")
+				return nil, fmt.Errorf("GitHub API rate limit exceeded (resets at %s). Try using a personal access token with --token", resetTime)
+			}
+			return nil, fmt.Errorf("HTTP 403 Forbidden - you may need a personal access token for private repositories (use --token)")
+		}
+		if resp.StatusCode == 429 {
+			retryAfter := resp.Header.Get("Retry-After")
+			return nil, fmt.Errorf("GitHub API rate limit exceeded. Retry after %s seconds", retryAfter)
+		}
+		if resp.StatusCode == 404 {
+			return nil, ErrNotFound
+		}
 		return nil, fmt.Errorf("HTTP request failed with status code: %d", resp.StatusCode)
 	}
 
@@ -82,9 +106,8 @@ func ViaContentsAPI(ctx context.Context, urlComponents model.RepoURLComponents, 
 	}
 
 	var items []Item
-	err = json.Unmarshal(contents, &items)
-	if err != nil {
-		return nil, err
+	if err = json.Unmarshal(contents, &items); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
 	}
 
 	for _, item := range items {
@@ -134,9 +157,8 @@ func ViaTreesAPI(
 	}
 
 	var treeResponse TreeResponse
-	err = json.Unmarshal(contents, &treeResponse)
-	if err != nil {
-		return nil, false, err
+	if err = json.Unmarshal(contents, &treeResponse); err != nil {
+		return nil, false, fmt.Errorf("failed to parse tree response: %w", err)
 	}
 
 	for _, item := range treeResponse.Tree {
@@ -152,17 +174,17 @@ func ViaTreesAPI(
 
 // RepoListingSlashBranchSupport fetches repository listing recursively.
 // It uses the provided context, repository components, and token for authentication.
-// It returns the list of files, the final reference, and an error (if any).
-func RepoListingSlashBranchSupport(ctx context.Context, components *model.RepoURLComponents, token string) ([]string, string, error) {
+// It returns the list of files and an error (if any).
+// The components parameter may be modified to adjust the ref and dir based on branch name parsing.
+func RepoListingSlashBranchSupport(ctx context.Context, components *model.RepoURLComponents, token string) ([]string, error) {
 	var files []string
 	var isTruncated bool
 
-	ref := components.Ref
 	dir := components.Dir
 
 	decodedDir, err := url.QueryUnescape(dir)
 	if err != nil {
-		return nil, "", fmt.Errorf("error decoding: %s", dir)
+		return nil, fmt.Errorf("error decoding: %s", dir)
 	}
 
 	dirParts := strings.Split(decodedDir, "/")
@@ -174,21 +196,21 @@ func RepoListingSlashBranchSupport(ctx context.Context, components *model.RepoUR
 			isTruncated = truncated
 			break
 		} else if errors.Is(err, ErrNotFound) {
-			ref = path.Join(ref, dirParts[0])
+			components.Ref = path.Join(components.Ref, dirParts[0])
 			dirParts = dirParts[1:]
 			components.Dir = strings.Join(dirParts, "/")
 		} else {
-			return nil, "", err
+			return nil, err
 		}
 	}
 
 	if len(files) == 0 && isTruncated {
 		files, err := ViaContentsAPI(ctx, *components, token)
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
-		return files, ref, nil
+		return files, nil
 	}
 
-	return files, ref, nil
+	return files, nil
 }
