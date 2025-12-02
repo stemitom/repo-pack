@@ -17,9 +17,18 @@ Repo-Pack is a Go-based tool designed to download files from a specified GitHub 
 
 ## Features
 
-- Download files from public GitHub repositories.
-- Preserve the directory structure starting from a specified base directory.
-- Support for GitHub personal access tokens for private repositories (feature in progress).
+- Download files from public and private GitHub repositories
+- Preserve the directory structure starting from a specified base directory
+- Support for GitHub personal access tokens for private repositories
+- Concurrent downloads with configurable limits
+- Resume capability to skip already downloaded files
+- Dry-run mode to preview files before downloading
+- Custom output directory support
+- Verbose and quiet logging modes
+- Progress bar with real-time download statistics
+- Git LFS (Large File Storage) support
+- Graceful cancellation with Ctrl+C
+- Comprehensive download summary
 
 ## Requirements
 
@@ -47,26 +56,76 @@ go build -o repo-pack
 Run the tool with the required flags:
 
 ```bash
-./repo-pack --url <repository_url> [--limit <concurrent_download_limit>] [--style <progress_bar_style>] [--token <personal_access_token>]
+./repo-pack --url <repository_url> [OPTIONS]
 ```
 
-- `--url`: The full URL to the GitHub repository directory you wish to download.
-- `--token`: Your GitHub personal access token (optional, required for private repositories).
-- `--limit`: The amount of concurrent download limits (optional, default is 10).
+### Required Flags
 
-### Example
+- `--url`: The full URL to the GitHub repository directory you wish to download
+  - Example: `https://github.com/owner/repo/tree/main/path/to/directory`
 
-To download the `lua` directory from a repository:
+### Optional Flags
 
+- `--token <token>`: Your GitHub personal access token (required for private repositories)
+  - Can also be stored in `~/.github/token`
+- `--output <directory>`: Output directory for downloaded files (default: current directory)
+- `--limit <number>`: Maximum concurrent downloads (default: 5, max recommended: 100)
+- `--style <character>`: Progress bar style character (default: █)
+- `--dry-run`: Preview files without downloading them
+- `--resume`: Skip files that already exist locally
+- `--verbose`: Enable verbose output (shows each file being downloaded)
+- `--quiet`: Suppress non-error output
+
+### Examples
+
+**Basic usage:**
 ```bash
 ./repo-pack --url https://github.com/JazzyGrim/dotfiles/tree/master/.config/nvim/lua
 ```
 
-This will create a directory named `lua` in your current working directory and download all files under the `.config/nvim/lua` directory from the repository, preserving the structure under `lua`.
+**Download to specific directory:**
+```bash
+./repo-pack --url https://github.com/owner/repo/tree/main/src --output ./my-project
+```
+
+**Preview files before downloading (dry-run):**
+```bash
+./repo-pack --url https://github.com/owner/repo/tree/main/docs --dry-run
+```
+
+**Resume interrupted download:**
+```bash
+./repo-pack --url https://github.com/owner/repo/tree/main/data --resume
+```
+
+**Download from private repository:**
+```bash
+./repo-pack --url https://github.com/owner/private-repo/tree/main/config --token YOUR_TOKEN
+```
+
+**Verbose output with higher concurrency:**
+```bash
+./repo-pack --url https://github.com/owner/repo/tree/main/assets --limit 20 --verbose
+```
+
+**Quiet mode (errors only):**
+```bash
+./repo-pack --url https://github.com/owner/repo/tree/main/files --quiet
+```
 
 ## Configuration
 
-No additional configuration is required. However, you can set up a `.gitignore` file to ignore binaries or other directories as needed.
+Repo-Pack automatically creates a configuration file at `~/.config/repo-pack/config.json` with default settings:
+
+```json
+{
+  "concurrent_download_limit": 5,
+  "progress_bar_style": "█",
+  "github_token_path": "~/.github/token"
+}
+```
+
+You can manually edit this file to change default settings. Command-line flags will override these defaults.
 
 ## Contributing
 
