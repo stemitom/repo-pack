@@ -12,7 +12,7 @@ import (
 func ParseRepoURL(urlStr string) (urlComponents model.RepoURLComponents, err error) {
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
-		err = fmt.Errorf("invalid URL: %s", urlStr)
+		err = fmt.Errorf("invalid URL: %s\nExample: https://github.com/owner/repo/tree/branch/path/to/directory", urlStr)
 		return
 	}
 
@@ -21,7 +21,7 @@ func ParseRepoURL(urlStr string) (urlComponents model.RepoURLComponents, err err
 	match := urlParserRegex.FindStringSubmatch(urlPath)
 
 	if len(match) != 5 {
-		err = fmt.Errorf("invalid URL format: %s", urlStr)
+		err = fmt.Errorf("invalid URL format: %s\nExpected format: https://github.com/owner/repo/tree/branch/path/to/directory\nMake sure the URL contains '/tree/' (not '/blob/')", urlStr)
 		return
 	}
 
