@@ -93,7 +93,6 @@ func run() error {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigCh
-		fmt.Println("\nCancelling...")
 		cancel()
 	}()
 
@@ -198,9 +197,14 @@ func run() error {
 
 	var downloadErrors []error
 	var skippedFiles []string
+	wasCancelled := false
 
 	for err := range errorsCh {
-		log.Println(err)
+		if ctx.Err() != nil {
+			wasCancelled = true
+		} else if *verbose {
+			log.Println(err)
+		}
 		downloadErrors = append(downloadErrors, err)
 	}
 
@@ -223,14 +227,16 @@ func run() error {
 
 	// Check if there were errors or cancellation
 	if len(downloadErrors) > 0 {
-		if ctx.Err() != nil {
-			return fmt.Errorf("download interrupted by user with %d error(s)", len(downloadErrors))
+		if wasCancelled {
+			fmt.Printf("Download cancelled by user with %d incomplete download(s)\n", len(downloadErrors))
+			os.Exit(1)
 		}
 		return fmt.Errorf("failed to download %d file(s)", len(downloadErrors))
 	}
 
 	if ctx.Err() != nil {
-		return fmt.Errorf("download cancelled by user")
+		fmt.Println("Download cancelled by user")
+		os.Exit(1)
 	}
 
 	return nil
