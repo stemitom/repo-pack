@@ -8,21 +8,37 @@ import (
 	"strings"
 )
 
-// SaveFile saves file to a filepath and base directory
-func SaveFile(baseDir string, filePath string, reader io.ReadCloser) error {
-	defer reader.Close()
-	currentDir, err := os.Getwd()
+// FileExists checks if a file exists at the given path
+func FileExists(baseDir string, filePath string, outputDir string) (bool, error) {
+	adjustedFilePath, err := extractRelativePath(baseDir, filePath)
 	if err != nil {
-		return fmt.Errorf("error getting current working directory: %v", err)
+		return false, err
 	}
 
-	baseDirIndex := strings.Index(filePath, baseDir+"/")
-	if baseDirIndex == -1 {
-		return fmt.Errorf("base directory %s not found in file path %s", baseDir, filePath)
+	fullPath := filepath.Join(outputDir, adjustedFilePath)
+	fullPath = filepath.Clean(fullPath)
+
+	_, err = os.Stat(fullPath)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+// SaveFile saves file to a filepath and base directory
+func SaveFile(baseDir string, filePath string, reader io.ReadCloser, outputDir string) error {
+	defer reader.Close()
+
+	adjustedFilePath, err := extractRelativePath(baseDir, filePath)
+	if err != nil {
+		return err
 	}
 
-	adjustedFilePath := filePath[baseDirIndex:]
-	fullPath := filepath.Join(currentDir, adjustedFilePath)
+	fullPath := filepath.Join(outputDir, adjustedFilePath)
+	fullPath = filepath.Clean(fullPath)
 
 	dir := filepath.Dir(fullPath)
 	if makeDirErr := os.MkdirAll(dir, 0o755); makeDirErr != nil && !os.IsExist(makeDirErr) {
@@ -31,14 +47,33 @@ func SaveFile(baseDir string, filePath string, reader io.ReadCloser) error {
 
 	file, err := os.Create(fullPath)
 	if err != nil {
-		return fmt.Errorf("error creating file %s: %v", fullPath, err)
+		return fmt.Errorf("error creating file %s: %w", fullPath, err)
 	}
 	defer file.Close()
 
 	_, err = io.Copy(file, reader)
 	if err != nil {
-		return fmt.Errorf("error copying content to file %s: %v", fullPath, err)
+		return fmt.Errorf("error copying content to file %s: %w", fullPath, err)
 	}
 
 	return nil
+}
+
+// extractRelativePath extracts the relative path starting from baseDir
+func extractRelativePath(baseDir string, filePath string) (string, error) {
+	// Normalize both paths
+	baseDir = filepath.Clean(baseDir)
+	filePath = filepath.Clean(filePath)
+
+	// Look for baseDir as a path component
+	baseDirIndex := strings.Index(filePath, baseDir+string(filepath.Separator))
+	if baseDirIndex == -1 {
+		// Try without separator at the end for exact match at end
+		if strings.HasSuffix(filePath, baseDir) {
+			return "", nil
+		}
+		return "", fmt.Errorf("base directory %s not found in file path %s", baseDir, filePath)
+	}
+
+	return filePath[baseDirIndex:], nil
 }
