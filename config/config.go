@@ -16,10 +16,14 @@ type Config struct {
 
 // DefaultConfig returns the default configuration
 func DefaultConfig() Config {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = "~"
+	}
 	return Config{
 		ConcurrentDownloadLimit: 5,
 		ProgressBarStyle:        "█",
-		GithubTokenPath:         filepath.Join(os.Getenv("HOME"), ".github", "token"),
+		GithubTokenPath:         filepath.Join(homeDir, ".github", "token"),
 	}
 }
 
@@ -27,7 +31,6 @@ func DefaultConfig() Config {
 func LoadConfig() (Config, error) {
 	configPath := getConfigPath()
 
-	// If config file doesn't exist, create it with default values
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return createDefaultConfig()
 	}
@@ -53,11 +56,11 @@ func SaveConfig(config Config) error {
 	}
 
 	configPath := getConfigPath()
-	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		return fmt.Errorf("error creating config directory: %v", err)
 	}
 
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
+	if err := os.WriteFile(configPath, data, 0o644); err != nil {
 		return fmt.Errorf("error writing config file: %v", err)
 	}
 
