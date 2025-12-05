@@ -18,6 +18,19 @@ func FileExists(baseDir string, filePath string, outputDir string) (bool, error)
 	fullPath := filepath.Join(outputDir, adjustedFilePath)
 	fullPath = filepath.Clean(fullPath)
 
+	// Ensure fullPath is within outputDir
+	absOutputDir, err := filepath.Abs(outputDir)
+	if err != nil {
+		return false, fmt.Errorf("error resolving output directory: %w", err)
+	}
+	absFullPath, err := filepath.Abs(fullPath)
+	if err != nil {
+		return false, fmt.Errorf("error resolving file path: %w", err)
+	}
+	if !strings.HasPrefix(absFullPath, absOutputDir+string(filepath.Separator)) && absFullPath != absOutputDir {
+		return false, fmt.Errorf("%s is outside output directory %s", filePath, outputDir)
+	}
+
 	_, err = os.Stat(fullPath)
 	if err == nil {
 		return true, nil
@@ -39,6 +52,18 @@ func SaveFile(baseDir string, filePath string, reader io.ReadCloser, outputDir s
 
 	fullPath := filepath.Join(outputDir, adjustedFilePath)
 	fullPath = filepath.Clean(fullPath)
+
+	absOutputDir, err := filepath.Abs(outputDir)
+	if err != nil {
+		return fmt.Errorf("error resolving output directory: %w", err)
+	}
+	absFullPath, err := filepath.Abs(fullPath)
+	if err != nil {
+		return fmt.Errorf("error resolving file path: %w", err)
+	}
+	if !strings.HasPrefix(absFullPath, absOutputDir+string(filepath.Separator)) && absFullPath != absOutputDir {
+		return fmt.Errorf("%s is outside output directory %s", filePath, outputDir)
+	}
 
 	dir := filepath.Dir(fullPath)
 	if makeDirErr := os.MkdirAll(dir, 0o755); makeDirErr != nil && !os.IsExist(makeDirErr) {

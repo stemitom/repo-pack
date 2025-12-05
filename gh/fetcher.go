@@ -124,7 +124,6 @@ func FetchPublicFile(ctx context.Context, path string, components *model.RepoURL
 	if err != nil {
 		return fmt.Errorf("HTTP error for %s: %w", path, err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
@@ -132,6 +131,9 @@ func FetchPublicFile(ctx context.Context, path string, components *model.RepoURL
 	}
 
 	if isLfsResponse(resp) {
+		// Close the original response body before fetching LFS content
+		resp.Body.Close()
+
 		lfsURL := fmt.Sprintf(
 			"https://media.githubusercontent.com/media/%s/%s/%s/%s",
 			user,
@@ -145,14 +147,17 @@ func FetchPublicFile(ctx context.Context, path string, components *model.RepoURL
 		}
 		resp, err = httpClient.Do(req)
 		if err != nil {
-			resp.Body.Close()
 			return fmt.Errorf("HTTP error for LFS %s: %w", path, err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return fmt.Errorf("HTTP %s for LFS %s", resp.Status, path)
 		}
 	}
 
+	// SaveFile closes resp.Body via defer, so we don't close it here
 	err = helpers.SaveFile(filepath.Base(components.Dir), path, resp.Body, outputDir)
 	if err != nil {
-		resp.Body.Close()
 		return fmt.Errorf("error saving file %s: %w", path, err)
 	}
 

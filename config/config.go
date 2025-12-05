@@ -60,7 +60,7 @@ func SaveConfig(config Config) error {
 		return fmt.Errorf("error creating config directory: %v", err)
 	}
 
-	if err := os.WriteFile(configPath, data, 0o644); err != nil {
+	if err := os.WriteFile(configPath, data, 0o600); err != nil {
 		return fmt.Errorf("error writing config file: %v", err)
 	}
 

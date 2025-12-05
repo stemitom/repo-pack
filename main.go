@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -68,7 +69,7 @@ func run() error {
 	if *token == "" {
 		tokenBytes, err := os.ReadFile(cfg.GithubTokenPath)
 		if err == nil {
-			*token = string(tokenBytes)
+			*token = strings.TrimSpace(string(tokenBytes))
 		} else if !os.IsNotExist(err) {
 			log.Printf("Warning: token file exists at %s but could not be read: %v\n", cfg.GithubTokenPath, err)
 		}
