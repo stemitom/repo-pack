@@ -13,19 +13,28 @@
   - [License](#license)
   <!--toc:end-->
 
-Repo-Pack is a Go-based tool designed to download files from a specified GitHub repository directory, preserving the directory structure relative to a specified base directory. It's particularly useful for cloning parts of a repository or extracting specific directories without the need to clone the entire project.
+Repo-Pack is a Go-based tool designed to download files or directories from GitHub repositories, preserving the directory structure relative to a specified base directory. It's particularly useful for cloning parts of a repository or extracting specific files/directories without the need to clone the entire project.
 
 ## Features
 
-- Download files from public and private GitHub repositories
+- Download single files or entire directories from GitHub repositories
+- Support for multiple URL formats:
+  - Directory URLs (`/tree/`): `https://github.com/owner/repo/tree/main/path/to/dir`
+  - File URLs (`/blob/`): `https://github.com/owner/repo/blob/main/path/to/file.txt`
+  - Raw URLs: `https://raw.githubusercontent.com/owner/repo/main/path/to/file.txt`
+- Enhanced progress display with:
+  - Real-time download progress (files and bytes)
+  - ETA calculation
+  - Download speed (files/s and bytes/s)
+  - Currently downloading files display
+  - Colored output (with `--no-color` option to disable)
 - Preserve the directory structure starting from a specified base directory
 - Support for GitHub personal access tokens for private repositories
 - Concurrent downloads with configurable limits
 - Resume capability to skip already downloaded files
 - Dry-run mode to preview files before downloading
-- Custom output directory support
+- Custom output directory and filename support
 - Verbose and quiet logging modes
-- Progress bar with real-time download statistics
 - Git LFS (Large File Storage) support
 - Graceful cancellation with Ctrl+C
 - Comprehensive download summary
@@ -61,26 +70,45 @@ Run the tool with the required flags:
 
 ### Required Flags
 
-- `--url`: The full URL to the GitHub repository directory you wish to download
-  - Example: `https://github.com/owner/repo/tree/main/path/to/directory`
+- `--url`: The full URL to the GitHub repository file or directory you wish to download
+  - Directory: `https://github.com/owner/repo/tree/main/path/to/directory`
+  - Single file: `https://github.com/owner/repo/blob/main/path/to/file.txt`
+  - Raw file: `https://raw.githubusercontent.com/owner/repo/main/path/to/file.txt`
 
 ### Optional Flags
 
 - `--token <token>`: Your GitHub personal access token (required for private repositories)
   - Can also be stored in `~/.github/token`
 - `--output <directory>`: Output directory for downloaded files (default: current directory)
+- `--output-file <filename>`: Custom filename for single file downloads (only works with `/blob/` or raw URLs)
 - `--limit <number>`: Maximum concurrent downloads (default: 5, max recommended: 100)
 - `--style <character>`: Progress bar style character (default: █)
 - `--dry-run`: Preview files without downloading them
 - `--resume`: Skip files that already exist locally
 - `--verbose`: Enable verbose output (shows each file being downloaded)
 - `--quiet`: Suppress non-error output
+- `--no-color`: Disable colored output
 
 ### Examples
 
-**Basic usage:**
+**Download a directory:**
 ```bash
 ./repo-pack --url https://github.com/JazzyGrim/dotfiles/tree/master/.config/nvim/lua
+```
+
+**Download a single file:**
+```bash
+./repo-pack --url https://github.com/owner/repo/blob/main/README.md
+```
+
+**Download a single file with custom name:**
+```bash
+./repo-pack --url https://github.com/owner/repo/blob/main/config.yaml --output-file my-config.yaml
+```
+
+**Download from raw URL:**
+```bash
+./repo-pack --url https://raw.githubusercontent.com/owner/repo/main/package.json
 ```
 
 **Download to specific directory:**
@@ -113,6 +141,11 @@ Run the tool with the required flags:
 ./repo-pack --url https://github.com/owner/repo/tree/main/files --quiet
 ```
 
+**Disable colored output:**
+```bash
+./repo-pack --url https://github.com/owner/repo/tree/main/src --no-color
+```
+
 ## Configuration
 
 Repo-Pack automatically creates a configuration file at `~/.config/repo-pack/config.json` with default settings:
@@ -134,4 +167,3 @@ Contributions are welcome! Please feel free to submit a pull request or open an 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
