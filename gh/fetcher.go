@@ -17,7 +17,8 @@ import (
 	"repo-pack/model"
 )
 
-// Error constants
+type ProgressCallback func(bytesDownloaded int64)
+
 var (
 	ErrRateLimitExceeded  = errors.New("rate limit exceeded")
 	ErrRepositoryNotFound = errors.New("repository not found")
@@ -25,12 +26,10 @@ var (
 	ErrFetchError         = errors.New("could not obtain repository data from the GitHub API")
 )
 
-// RepoInfo represents information about a repository
 type RepoInfo struct {
 	Private bool `json:"private"`
 }
 
-// FetchRepoIsPrivate checks if a repository is private or not on GitHub.
 func FetchRepoIsPrivate(ctx context.Context, components *model.RepoURLComponents, token string) (bool, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s", components.Owner, components.Repository)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -42,7 +41,7 @@ func FetchRepoIsPrivate(ctx context.Context, components *model.RepoURLComponents
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := doRequestWithRetry(ctx, req)
 	if err != nil {
 		return false, err
 	}
@@ -101,8 +100,20 @@ func isLfsResponse(res *http.Response) bool {
 	return isLfs
 }
 
-// FetchPublicFile downloads a file from a public GitHub repository, handling Git LFS if necessary and saves it.
 func FetchPublicFile(ctx context.Context, path string, components *model.RepoURLComponents, outputDir string) error {
+	return FetchPublicFileWithProgress(ctx, path, "", components, outputDir, nil)
+}
+
+func FetchPublicFileWithProgress(ctx context.Context, path, sha string, components *model.RepoURLComponents, outputDir string, onProgress ProgressCallback) error {
+	destPath := filepath.Join(outputDir, filepath.Base(components.Dir), path)
+
+	cache := GetCache()
+	if sha != "" && cache != nil {
+		if found, err := cache.Get(sha, destPath); found && err == nil {
+			return nil
+		}
+	}
+
 	user := components.Owner
 	repository := components.Repository
 	ref := components.Ref
@@ -120,7 +131,7 @@ func FetchPublicFile(ctx context.Context, path string, components *model.RepoURL
 		return fmt.Errorf("creating request for %s: %w", path, err)
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := doRequestWithRetry(ctx, req)
 	if err != nil {
 		return fmt.Errorf("HTTP error for %s: %w", path, err)
 	}
@@ -131,7 +142,6 @@ func FetchPublicFile(ctx context.Context, path string, components *model.RepoURL
 	}
 
 	if isLfsResponse(resp) {
-		// Close the original response body before fetching LFS content
 		resp.Body.Close()
 
 		lfsURL := fmt.Sprintf(
@@ -145,7 +155,7 @@ func FetchPublicFile(ctx context.Context, path string, components *model.RepoURL
 		if err != nil {
 			return fmt.Errorf("error creating LFS request for %s: %w", path, err)
 		}
-		resp, err = httpClient.Do(req)
+		resp, err = doRequestWithRetry(ctx, req)
 		if err != nil {
 			return fmt.Errorf("HTTP error for LFS %s: %w", path, err)
 		}
@@ -155,11 +165,100 @@ func FetchPublicFile(ctx context.Context, path string, components *model.RepoURL
 		}
 	}
 
-	// SaveFile closes resp.Body via defer, so we don't close it here
-	err = helpers.SaveFile(filepath.Base(components.Dir), path, resp.Body, outputDir)
+	err = helpers.SaveFileWithProgress(filepath.Base(components.Dir), path, resp.Body, outputDir, helpers.ProgressCallback(onProgress))
 	if err != nil {
 		return fmt.Errorf("error saving file %s: %w", path, err)
 	}
 
+	if sha != "" && cache != nil {
+		_ = cache.Put(sha, destPath)
+	}
+
 	return nil
+}
+
+func FetchSingleFile(ctx context.Context, components *model.RepoURLComponents, outputPath string, onProgress ProgressCallback) (int64, error) {
+	rawURL := fmt.Sprintf(
+		"https://raw.githubusercontent.com/%s/%s/%s/%s",
+		components.Owner,
+		components.Repository,
+		components.Ref,
+		url.PathEscape(components.FilePath),
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return 0, fmt.Errorf("creating request: %w", err)
+	}
+
+	resp, err := doRequestWithRetry(ctx, req)
+	if err != nil {
+		return 0, fmt.Errorf("HTTP error: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return 0, fmt.Errorf("HTTP %s", resp.Status)
+	}
+
+	contentLength := resp.ContentLength
+
+	if isLfsResponse(resp) {
+		resp.Body.Close()
+
+		lfsURL := fmt.Sprintf(
+			"https://media.githubusercontent.com/media/%s/%s/%s/%s",
+			components.Owner,
+			components.Repository,
+			components.Ref,
+			url.PathEscape(components.FilePath),
+		)
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, lfsURL, nil)
+		if err != nil {
+			return 0, fmt.Errorf("error creating LFS request: %w", err)
+		}
+		resp, err = doRequestWithRetry(ctx, req)
+		if err != nil {
+			return 0, fmt.Errorf("HTTP error for LFS: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return 0, fmt.Errorf("HTTP %s for LFS", resp.Status)
+		}
+		contentLength = resp.ContentLength
+	}
+
+	err = helpers.SaveFileDirect(outputPath, resp.Body, ".", helpers.ProgressCallback(onProgress))
+	if err != nil {
+		return 0, fmt.Errorf("error saving file: %w", err)
+	}
+
+	return contentLength, nil
+}
+
+func GetFileSize(ctx context.Context, components *model.RepoURLComponents) (int64, error) {
+	rawURL := fmt.Sprintf(
+		"https://raw.githubusercontent.com/%s/%s/%s/%s",
+		components.Owner,
+		components.Repository,
+		components.Ref,
+		url.PathEscape(components.FilePath),
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, rawURL, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	resp, err := doRequestWithRetry(ctx, req)
+	if err != nil {
+		return 0, err
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("HTTP %s", resp.Status)
+	}
+
+	return resp.ContentLength, nil
 }

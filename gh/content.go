@@ -18,9 +18,13 @@ import (
 var httpClient = &http.Client{
 	Timeout: 30 * time.Second,
 	Transport: &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 10,
-		IdleConnTimeout:     90 * time.Second,
+		MaxIdleConns:          200,
+		MaxConnsPerHost:       50,
+		MaxIdleConnsPerHost:   20,
+		IdleConnTimeout:       90 * time.Second,
+		DisableCompression:    false,
+		ForceAttemptHTTP2:     true,
+		ResponseHeaderTimeout: 10 * time.Second,
 	},
 }
 
@@ -40,9 +44,7 @@ type TreeResponse struct {
 
 var ErrNotFound = errors.New("not found")
 
-// API makes a GET request to the GitHub API with the given endpoint and optional authentication token.
-// It returns the response body as a byte slice or an error if the request fails.
-func API(ctx context.Context, endpoint, token string) ([]byte, error) {
+func apiRequest(ctx context.Context, endpoint, token string) (*http.Response, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s", endpoint)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -53,13 +55,13 @@ func API(ctx context.Context, endpoint, token string) ([]byte, error) {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := doRequestWithRetry(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		resp.Body.Close()
 		if resp.StatusCode == 403 {
 			rateLimitRemaining := resp.Header.Get("X-RateLimit-Remaining")
 			if rateLimitRemaining == "0" {
@@ -78,6 +80,18 @@ func API(ctx context.Context, endpoint, token string) ([]byte, error) {
 		return nil, fmt.Errorf("HTTP request failed with status code: %d", resp.StatusCode)
 	}
 
+	return resp, nil
+}
+
+// API makes a GET request to the GitHub API with the given endpoint and optional authentication token.
+// It returns the response body as a byte slice or an error if the request fails.
+func API(ctx context.Context, endpoint, token string) ([]byte, error) {
+	resp, err := apiRequest(ctx, endpoint, token)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -86,11 +100,9 @@ func API(ctx context.Context, endpoint, token string) ([]byte, error) {
 	return body, nil
 }
 
-// ViaContentsAPI retrieves a list of files in a GitHub repository directory using the Contents API.
-// It handles both files and subdirectories recursively.
-func ViaContentsAPI(ctx context.Context, urlComponents model.RepoURLComponents, token string) ([]string, error) {
-	files := []string{}
-	contents, err := API(
+func ViaContentsAPI(ctx context.Context, urlComponents model.RepoURLComponents, token string) ([]model.FileInfo, error) {
+	var files []model.FileInfo
+	resp, err := apiRequest(
 		ctx,
 		fmt.Sprintf(
 			"%s/%s/contents/%s?ref=%s",
@@ -104,16 +116,21 @@ func ViaContentsAPI(ctx context.Context, urlComponents model.RepoURLComponents, 
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	var items []Item
-	if err = json.Unmarshal(contents, &items); err != nil {
+	if err = json.NewDecoder(resp.Body).Decode(&items); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
 	}
 
 	for _, item := range items {
 		switch item.Type {
 		case "file":
-			files = append(files, item.Path)
+			files = append(files, model.FileInfo{
+				Path: item.Path,
+				Size: item.Size,
+				SHA:  item.SHA,
+			})
 		case "dir":
 			newComponents := urlComponents
 			newComponents.Dir = item.Path
@@ -130,19 +147,16 @@ func ViaContentsAPI(ctx context.Context, urlComponents model.RepoURLComponents, 
 	return files, nil
 }
 
-// ViaTreesAPI retrieves a list of files in a GitHub repository directory using the Git Trees API.
-// It handles both files and subdirectories recursively, and indicates if the response was truncated.
 func ViaTreesAPI(
 	ctx context.Context,
 	urlComponents model.RepoURLComponents,
 	token string,
-) (files []string, truncated bool, err error) {
+) (files []model.FileInfo, truncated bool, err error) {
 	if !strings.HasSuffix(urlComponents.Dir, "/") {
 		urlComponents.Dir += "/"
 	}
 
-	files = []string{}
-	contents, err := API(
+	resp, err := apiRequest(
 		ctx,
 		fmt.Sprintf(
 			"%s/%s/git/trees/%s?recursive=1",
@@ -155,15 +169,20 @@ func ViaTreesAPI(
 	if err != nil {
 		return nil, false, err
 	}
+	defer resp.Body.Close()
 
 	var treeResponse TreeResponse
-	if err = json.Unmarshal(contents, &treeResponse); err != nil {
+	if err = json.NewDecoder(resp.Body).Decode(&treeResponse); err != nil {
 		return nil, false, fmt.Errorf("failed to parse tree response: %w", err)
 	}
 
 	for _, item := range treeResponse.Tree {
 		if item.Type == "blob" && strings.HasPrefix(item.Path, urlComponents.Dir) {
-			files = append(files, item.Path)
+			files = append(files, model.FileInfo{
+				Path: item.Path,
+				Size: item.Size,
+				SHA:  item.SHA,
+			})
 		}
 	}
 
@@ -172,12 +191,8 @@ func ViaTreesAPI(
 	return files, truncated, nil
 }
 
-// RepoListingSlashBranchSupport fetches repository listing recursively.
-// It uses the provided context, repository components, and token for authentication.
-// It returns the list of files and an error (if any).
-// The components parameter may be modified to adjust the ref and dir based on branch name parsing.
-func RepoListingSlashBranchSupport(ctx context.Context, components *model.RepoURLComponents, token string) ([]string, error) {
-	var files []string
+func RepoListingSlashBranchSupport(ctx context.Context, components *model.RepoURLComponents, token string) ([]model.FileInfo, error) {
+	var files []model.FileInfo
 	var isTruncated bool
 
 	dir := components.Dir
