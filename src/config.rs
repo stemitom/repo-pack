@@ -2,6 +2,10 @@ use crate::error::RepoPackError;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Application configuration for repo-pack.
+///
+/// Configuration is stored at `~/.config/repo-pack/config.json` and created with
+/// default values on first run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub concurrent_download_limit: u64,
@@ -21,6 +25,7 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Loads configuration from disk, creating a default config file if none exists.
     pub fn load() -> Result<Self, RepoPackError> {
         let config_path = Self::config_path();
 
@@ -36,6 +41,7 @@ impl Config {
         serde_json::from_str(&contents).map_err(|e| RepoPackError::ConfigParse { source: e })
     }
 
+    /// Persists the current configuration to disk.
     pub fn save(&self) -> Result<(), RepoPackError> {
         let config_path = Self::config_path();
 
@@ -43,11 +49,10 @@ impl Config {
             std::fs::create_dir_all(parent).map_err(|e| RepoPackError::ConfigSave { source: e })?;
         }
 
-        let contents = serde_json::to_string_pretty(self).map_err(|e| {
-            RepoPackError::ConfigSave {
+        let contents =
+            serde_json::to_string_pretty(self).map_err(|e| RepoPackError::ConfigSave {
                 source: std::io::Error::new(std::io::ErrorKind::InvalidData, e),
-            }
-        })?;
+            })?;
 
         std::fs::write(&config_path, contents).map_err(|e| RepoPackError::ConfigSave { source: e })
     }
@@ -63,6 +68,7 @@ impl Config {
             .join("config.json")
     }
 
+    /// Reads the GitHub token from the configured `github_token_path`, if present.
     pub fn read_token(&self) -> Option<String> {
         std::fs::read_to_string(&self.github_token_path)
             .ok()

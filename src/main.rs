@@ -1,8 +1,11 @@
-use anstream::eprintln;
+use anstream::{eprintln, println};
 use clap::Parser;
 use miette::Result;
 use owo_colors::OwoColorize;
-use repo_pack::{Cli, Config};
+use repo_pack::{
+    download_files, Cli, Config, DownloadOptions, DownloadProgress, GitHubProvider, ParsedUrl,
+};
+use std::time::Instant;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -22,7 +25,92 @@ async fn main() -> Result<()> {
         );
     }
 
+    let mut parsed_url = ParsedUrl::parse(&cli.url)?;
+    let provider = GitHubProvider::new()?;
+
+    let files = provider
+        .list_files(&mut parsed_url, cli.token.as_deref())
+        .await?;
+
+    if files.is_empty() {
+        println!("No files found in {}", cli.url.cyan());
+        return Ok(());
+    }
+
+    if cli.dry_run {
+        println!(
+            "Dry run — {} file(s) ready to download",
+            files.len().to_string().cyan()
+        );
+        if cli.verbose > 0 {
+            for (i, file) in files.iter().enumerate() {
+                println!("  {}. {}", i + 1, file.dimmed());
+            }
+        }
+        return Ok(());
+    }
+
+    let base_dir = std::path::Path::new(&parsed_url.dir)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(&parsed_url.dir);
+
+    let total_files = files.len() as u64;
+    let progress = DownloadProgress::new(total_files, cli.quiet > 0 || cli.no_progress);
+
+    let options = DownloadOptions {
+        base_dir,
+        output_dir: &cli.output,
+        concurrency_limit: cli.limit as usize,
+        resume: cli.resume,
+        verbose: cli.verbose > 0,
+    };
+
+    let start = Instant::now();
+    let result = download_files(&provider, &parsed_url, files, options, &progress).await;
+    let duration = start.elapsed();
+
+    print_summary(&result, total_files, duration, cli.quiet > 0);
+
+    if !result.errors.is_empty() && cli.verbose > 0 {
+        eprintln!();
+        for (path, err) in &result.errors {
+            eprintln!("  {}: {} — {}", "failed".red(), path, err);
+        }
+    }
+
     Ok(())
+}
+
+fn print_summary(
+    result: &repo_pack::DownloadResult,
+    total: u64,
+    duration: std::time::Duration,
+    quiet: bool,
+) {
+    if quiet {
+        return;
+    }
+
+    let mut parts = vec![format!(
+        "{}/{}",
+        result.downloaded.to_string().green(),
+        total
+    )];
+
+    parts.push(" downloaded".to_string());
+
+    if result.skipped > 0 {
+        parts.push(format!(", {} skipped", result.skipped.to_string().yellow()));
+    }
+
+    if result.failed > 0 {
+        parts.push(format!(", {} failed", result.failed.to_string().red()));
+    }
+
+    parts.push(format!(" [{:.3}s]", duration.as_secs_f64()).dimmed().to_string());
+
+    println!("{}", parts.join(""));
 }
 
 #[cfg(test)]
