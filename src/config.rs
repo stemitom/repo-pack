@@ -21,8 +21,6 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Load config from ~/.config/repo-pack/config.json
-    /// Creates default config if file doesn't exist
     pub fn load() -> Result<Self, RepoPackError> {
         let config_path = Self::config_path();
 
@@ -35,31 +33,25 @@ impl Config {
         let contents = std::fs::read_to_string(&config_path)
             .map_err(|e| RepoPackError::ConfigLoad { source: e })?;
 
-        let config: Config = serde_json::from_str(&contents)
-            .map_err(|e| RepoPackError::ConfigParse { source: e })?;
-
-        Ok(config)
+        serde_json::from_str(&contents).map_err(|e| RepoPackError::ConfigParse { source: e })
     }
 
-    /// Save config to ~/.config/repo-pack/config.json
     pub fn save(&self) -> Result<(), RepoPackError> {
         let config_path = Self::config_path();
 
-        // Create parent directories if needed
         if let Some(parent) = config_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| RepoPackError::ConfigSave { source: e })?;
         }
 
-        let contents =
-            serde_json::to_string_pretty(self).expect("Config serialization should not fail");
+        let contents = serde_json::to_string_pretty(self).map_err(|e| {
+            RepoPackError::ConfigSave {
+                source: std::io::Error::new(std::io::ErrorKind::InvalidData, e),
+            }
+        })?;
 
-        std::fs::write(&config_path, contents)
-            .map_err(|e| RepoPackError::ConfigSave { source: e })?;
-
-        Ok(())
+        std::fs::write(&config_path, contents).map_err(|e| RepoPackError::ConfigSave { source: e })
     }
 
-    /// Get the config file path
     fn config_path() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| {
@@ -71,8 +63,6 @@ impl Config {
             .join("config.json")
     }
 
-    /// Read token from the configured token file path
-    /// Returns None if file doesn't exist or can't be read
     pub fn read_token(&self) -> Option<String> {
         std::fs::read_to_string(&self.github_token_path)
             .ok()

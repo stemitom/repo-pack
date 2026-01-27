@@ -9,7 +9,7 @@ pub enum RepoPackError {
     InvalidUrl { url: String, hint: String },
 
     #[error("rate limit exceeded, resets at {reset_time}")]
-    #[diagnostic(help("Try using a personal access token with --token"))]
+    #[diagnostic(help("Try using a personal access token with `--token`"))]
     RateLimited { reset_time: String },
 
     #[error("repository not found: {owner}/{repo}")]
@@ -21,7 +21,7 @@ pub enum RepoPackError {
     },
 
     #[error("authentication required for private repository")]
-    #[diagnostic(help("Use --token to provide a GitHub personal access token"))]
+    #[diagnostic(help("Use `--token` to provide a GitHub personal access token"))]
     AuthRequired,
 
     #[error("failed to download {path}")]
