@@ -6,7 +6,7 @@ fn parse_standard_url() {
     let parsed = ParsedUrl::parse(url).unwrap();
     assert_eq!(parsed.owner, "owner");
     assert_eq!(parsed.repo, "repo");
-    assert_eq!(parsed.git_ref, "main");
+    assert_eq!(parsed.git_ref(), "main");
     assert_eq!(parsed.dir, "src/lib");
 }
 
@@ -16,7 +16,7 @@ fn parse_url_with_branch_name() {
     let parsed = ParsedUrl::parse(url).unwrap();
     assert_eq!(parsed.owner, "astral-sh");
     assert_eq!(parsed.repo, "uv");
-    assert_eq!(parsed.git_ref, "main");
+    assert_eq!(parsed.git_ref(), "main");
     assert_eq!(parsed.dir, "crates/uv-fs/src");
 }
 
@@ -24,7 +24,7 @@ fn parse_url_with_branch_name() {
 fn parse_url_with_tag_ref() {
     let url = "https://github.com/owner/repo/tree/v1.2.3/docs";
     let parsed = ParsedUrl::parse(url).unwrap();
-    assert_eq!(parsed.git_ref, "v1.2.3");
+    assert_eq!(parsed.git_ref(), "v1.2.3");
     assert_eq!(parsed.dir, "docs");
 }
 
@@ -32,7 +32,7 @@ fn parse_url_with_tag_ref() {
 fn parse_url_with_commit_sha() {
     let url = "https://github.com/owner/repo/tree/abc123def/src";
     let parsed = ParsedUrl::parse(url).unwrap();
-    assert_eq!(parsed.git_ref, "abc123def");
+    assert_eq!(parsed.git_ref(), "abc123def");
 }
 
 #[test]
@@ -73,10 +73,23 @@ fn parse_non_github_url_parses_path() {
 }
 
 #[test]
-fn parse_url_missing_path_fails() {
+fn parse_url_without_tree_uses_default_branch() {
+    let url = "https://github.com/owner/repo/src/lib";
+    let parsed = ParsedUrl::parse(url).unwrap();
+    assert_eq!(parsed.owner, "owner");
+    assert_eq!(parsed.repo, "repo");
+    assert!(parsed.needs_default_branch());
+    assert_eq!(parsed.dir, "src/lib");
+}
+
+#[test]
+fn parse_repo_root_url() {
     let url = "https://github.com/owner/repo";
-    let result = ParsedUrl::parse(url);
-    assert!(matches!(result, Err(RepoPackError::InvalidUrl { .. })));
+    let parsed = ParsedUrl::parse(url).unwrap();
+    assert_eq!(parsed.owner, "owner");
+    assert_eq!(parsed.repo, "repo");
+    assert!(parsed.needs_default_branch());
+    assert_eq!(parsed.dir, "");
 }
 
 #[test]

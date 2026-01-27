@@ -25,6 +25,11 @@ struct ContentItem {
     path: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct RepoResponse {
+    default_branch: String,
+}
+
 /// GitHub API client for listing and downloading repository contents.
 ///
 /// Handles authentication, rate limiting, and Git LFS transparently.
@@ -56,6 +61,18 @@ impl GitHubProvider {
         }
     }
 
+    /// Fetches the default branch name for a repository.
+    pub async fn get_default_branch(
+        &self,
+        owner: &str,
+        repo: &str,
+        token: Option<&str>,
+    ) -> Result<String, RepoPackError> {
+        let endpoint = format!("{owner}/{repo}");
+        let response: RepoResponse = self.api_request(&endpoint, token).await?;
+        Ok(response.default_branch)
+    }
+
     /// List files in a GitHub repository directory.
     ///
     /// Handles branches with slashes (e.g., `feature/my-branch`) by iteratively
@@ -82,26 +99,35 @@ impl GitHubProvider {
         let mut files = Vec::new();
         let mut truncated = false;
 
-        // Branch-with-slash resolution: if URL is /owner/repo/tree/feature/branch/src/lib
-        // and branch is actually "feature/branch", the initial parse gives:
-        //   ref="feature", dir="branch/src/lib"
-        // On 404, we shift: ref="feature/branch", dir="src/lib"
-        // Repeat until trees API succeeds or dir_parts exhausted
-        while !dir_parts.is_empty() {
-            parsed_url.dir = dir_parts.join("/");
+        // Handle repo root (empty dir) - just call trees API directly
+        if dir_parts.is_empty() {
+            let (tree_files, is_truncated) = self.via_trees_api(parsed_url, token).await?;
+            files = tree_files;
+            truncated = is_truncated;
+        } else {
+            // Branch-with-slash resolution: if URL is /owner/repo/tree/feature/branch/src/lib
+            // and branch is actually "feature/branch", the initial parse gives:
+            //   ref="feature", dir="branch/src/lib"
+            // On 404, we shift: ref="feature/branch", dir="src/lib"
+            // Repeat until trees API succeeds or dir_parts exhausted
+            while !dir_parts.is_empty() {
+                parsed_url.dir = dir_parts.join("/");
 
-            match self.via_trees_api(parsed_url, token).await {
-                Ok((tree_files, is_truncated)) => {
-                    files = tree_files;
-                    truncated = is_truncated;
-                    break;
+                match self.via_trees_api(parsed_url, token).await {
+                    Ok((tree_files, is_truncated)) => {
+                        files = tree_files;
+                        truncated = is_truncated;
+                        break;
+                    }
+                    Err(RepoPackError::NotFound { .. }) => {
+                        // Branch names can contain slashes (e.g., feature/my-branch).
+                        // If 404, shift first dir part into ref and retry.
+                        let current_ref = parsed_url.git_ref();
+                        parsed_url.set_git_ref(format!("{}/{}", current_ref, dir_parts[0]));
+                        dir_parts = dir_parts[1..].to_vec();
+                    }
+                    Err(e) => return Err(e),
                 }
-                Err(RepoPackError::NotFound { .. }) => {
-                    // Shift first dir part into ref (branch name extends)
-                    parsed_url.git_ref = format!("{}/{}", parsed_url.git_ref, dir_parts[0]);
-                    dir_parts = dir_parts[1..].to_vec();
-                }
-                Err(e) => return Err(e),
             }
         }
 
@@ -130,7 +156,9 @@ impl GitHubProvider {
 
         let endpoint = format!(
             "{}/{}/git/trees/{}?recursive=1",
-            parsed_url.owner, parsed_url.repo, parsed_url.git_ref
+            parsed_url.owner,
+            parsed_url.repo,
+            parsed_url.git_ref()
         );
 
         let response: TreeResponse = self.api_request(&endpoint, token).await?;
@@ -157,7 +185,10 @@ impl GitHubProvider {
     ) -> Result<Vec<String>, RepoPackError> {
         let endpoint = format!(
             "{}/{}/contents/{}?ref={}",
-            parsed_url.owner, parsed_url.repo, parsed_url.dir, parsed_url.git_ref
+            parsed_url.owner,
+            parsed_url.repo,
+            parsed_url.dir,
+            parsed_url.git_ref()
         );
 
         let items: Vec<ContentItem> = self.api_request(&endpoint, token).await?;
@@ -268,7 +299,10 @@ impl GitHubProvider {
         let encoded_path = urlencoding::encode(path);
         let raw_url = format!(
             "https://raw.githubusercontent.com/{}/{}/{}/{}",
-            parsed_url.owner, parsed_url.repo, parsed_url.git_ref, encoded_path
+            parsed_url.owner,
+            parsed_url.repo,
+            parsed_url.git_ref(),
+            encoded_path
         );
 
         let response = self
@@ -309,7 +343,10 @@ impl GitHubProvider {
         // LFS pointer detected - fetch actual content from media URL
         let lfs_url = format!(
             "https://media.githubusercontent.com/media/{}/{}/{}/{}",
-            parsed_url.owner, parsed_url.repo, parsed_url.git_ref, encoded_path
+            parsed_url.owner,
+            parsed_url.repo,
+            parsed_url.git_ref(),
+            encoded_path
         );
 
         let lfs_response = self
