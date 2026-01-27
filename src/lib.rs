@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod config;
+pub mod download;
 pub mod error;
 pub mod url;
 pub mod provider;

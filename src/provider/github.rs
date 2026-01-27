@@ -1,5 +1,6 @@
 use crate::error::RepoPackError;
 use crate::url::ParsedUrl;
+use bytes::Bytes;
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use std::time::Duration;
@@ -30,7 +31,6 @@ pub struct GitHubProvider {
 
 impl GitHubProvider {
     pub fn new() -> Result<Self, RepoPackError> {
-        // Match Go client settings: 30s timeout, connection pooling for performance
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .pool_max_idle_per_host(10)
@@ -236,5 +236,105 @@ impl GitHubProvider {
             path: endpoint.to_string(),
             source: e,
         })
+    }
+
+    /// Download file from GitHub repository with Git LFS detection.
+    pub async fn download_file(
+        &self,
+        path: &str,
+        parsed_url: &ParsedUrl,
+    ) -> Result<Bytes, RepoPackError> {
+        let encoded_path = urlencoding::encode(path);
+        let raw_url = format!(
+            "https://raw.githubusercontent.com/{}/{}/{}/{}",
+            parsed_url.owner, parsed_url.repo, parsed_url.git_ref, encoded_path
+        );
+
+        let response = self
+            .client
+            .get(&raw_url)
+            .send()
+            .await
+            .map_err(|e| RepoPackError::DownloadFailed {
+                path: path.to_string(),
+                source: e,
+            })?;
+
+        let status = response.status();
+
+        if status != StatusCode::OK {
+            return Err(RepoPackError::DownloadFailed {
+                path: path.to_string(),
+                source: response.error_for_status().unwrap_err(),
+            });
+        }
+
+        let content_length = response
+            .headers()
+            .get("content-length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<usize>().ok());
+
+        if let Some(len) = content_length {
+            if (128..=140).contains(&len) {
+                let body = response.bytes().await.map_err(|e| RepoPackError::DownloadFailed {
+                    path: path.to_string(),
+                    source: e,
+                })?;
+
+                let is_lfs = if body.len() >= 40 {
+                    let prefix = &body[..40];
+                    prefix.starts_with(b"version https://git-lfs.github.com/spec/v1")
+                } else {
+                    false
+                };
+
+                if is_lfs {
+                    let lfs_url = format!(
+                        "https://media.githubusercontent.com/media/{}/{}/{}/{}",
+                        parsed_url.owner, parsed_url.repo, parsed_url.git_ref, encoded_path
+                    );
+
+                    let lfs_response = self
+                        .client
+                        .get(&lfs_url)
+                        .send()
+                        .await
+                        .map_err(|e| RepoPackError::DownloadFailed {
+                            path: path.to_string(),
+                            source: e,
+                        })?;
+
+                    let lfs_status = lfs_response.status();
+
+                    if lfs_status != StatusCode::OK {
+                        return Err(RepoPackError::DownloadFailed {
+                            path: path.to_string(),
+                            source: lfs_response.error_for_status().unwrap_err(),
+                        });
+                    }
+
+                    lfs_response
+                        .bytes()
+                        .await
+                        .map_err(|e| RepoPackError::DownloadFailed {
+                            path: path.to_string(),
+                            source: e,
+                        })
+                } else {
+                    Ok(body)
+                }
+            } else {
+                response.bytes().await.map_err(|e| RepoPackError::DownloadFailed {
+                    path: path.to_string(),
+                    source: e,
+                })
+            }
+        } else {
+            response.bytes().await.map_err(|e| RepoPackError::DownloadFailed {
+                path: path.to_string(),
+                source: e,
+            })
+        }
     }
 }
