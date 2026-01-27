@@ -10,10 +10,8 @@ async fn main() -> Result<()> {
 
     let config = Config::load()?;
 
-    if cli.token.is_none() {
-        if let Some(token) = config.read_token() {
-            cli.token = Some(token);
-        }
+    if cli.token.is_none() && let Some(token) = config.read_token() {
+        cli.token = Some(token);
     }
 
     if cli.limit > 100 {
@@ -25,4 +23,26 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use repo_pack::ParsedUrl;
+
+    #[test]
+    fn test_parse_valid_url() {
+        let url = "https://github.com/owner/repo/tree/main/path/to/dir";
+        let parsed = ParsedUrl::parse(url).unwrap();
+        assert_eq!(parsed.owner, "owner");
+        assert_eq!(parsed.repo, "repo");
+        assert_eq!(parsed.git_ref, "main");
+        assert_eq!(parsed.dir, "path/to/dir");
+    }
+
+    #[test]
+    fn test_parse_blob_url_fails() {
+        let url = "https://github.com/owner/repo/blob/main/file.rs";
+        let result = ParsedUrl::parse(url);
+        assert!(result.is_err());
+    }
 }
