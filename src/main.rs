@@ -2,11 +2,19 @@ use anstream::eprintln;
 use clap::Parser;
 use miette::Result;
 use owo_colors::OwoColorize;
-use repo_pack::Cli;
+use repo_pack::{Cli, Config};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+
+    let config = Config::load()?;
+
+    if cli.token.is_none() {
+        if let Some(token) = config.read_token() {
+            cli.token = Some(token);
+        }
+    }
 
     if cli.limit > 100 {
         eprintln!(
@@ -15,8 +23,6 @@ async fn main() -> Result<()> {
             cli.limit
         );
     }
-
-    // TODO: implement download logic
 
     Ok(())
 }
