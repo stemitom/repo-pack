@@ -205,16 +205,16 @@ impl GitHubProvider {
 
         // Rate limit: 60/hr unauthenticated, 5000/hr with token
         if status == StatusCode::FORBIDDEN {
-            if let Some(remaining) = response.headers().get("X-RateLimit-Remaining") {
-                if remaining == "0" {
-                    let reset_time = response
-                        .headers()
-                        .get("X-RateLimit-Reset")
-                        .and_then(|v| v.to_str().ok())
-                        .unwrap_or("unknown")
-                        .to_string();
-                    return Err(RepoPackError::RateLimited { reset_time });
-                }
+            if let Some(remaining) = response.headers().get("X-RateLimit-Remaining")
+                && remaining == "0"
+            {
+                let reset_time = response
+                    .headers()
+                    .get("X-RateLimit-Reset")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("unknown")
+                    .to_string();
+                return Err(RepoPackError::RateLimited { reset_time });
             }
             return Err(RepoPackError::AuthRequired);
         }

@@ -68,8 +68,8 @@ pub fn extract_relative_path(base_dir: &str, file_path: &str) -> Result<String, 
             (base_dir.to_string(), file_path.to_string())
         };
 
-    let separator = std::path::MAIN_SEPARATOR.to_string();
-    let search_pattern = format!("{base_dir}{separator}");
+    // GitHub API always returns paths with forward slashes
+    let search_pattern = format!("{base_dir}/");
 
     if let Some(index) = file_path.find(&search_pattern) {
         return Ok(file_path[index..].to_string());
@@ -208,13 +208,11 @@ pub async fn download_files(
                     return (file_path, DownloadStatus::Cancelled);
                 }
 
-                if resume {
-                    if let Ok(relative) = extract_relative_path(&base_dir, &file_path) {
-                        let target_path = output_dir.join(&relative);
-                        if target_path.exists() {
-                            return (file_path, DownloadStatus::Skipped);
-                        }
-                    }
+                if resume
+                    && let Ok(relative) = extract_relative_path(&base_dir, &file_path)
+                    && output_dir.join(&relative).exists()
+                {
+                    return (file_path, DownloadStatus::Skipped);
                 }
 
                 match provider.download_file(&file_path, parsed_url).await {

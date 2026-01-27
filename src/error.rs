@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 #[derive(Error, Debug, Diagnostic)]
+#[allow(unused)]
 pub enum RepoPackError {
     #[error("invalid url: {url}")]
     #[diagnostic(help("{hint}"))]
