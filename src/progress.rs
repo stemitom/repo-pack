@@ -65,14 +65,9 @@ impl DownloadProgress {
         }
     }
 
-    /// Finishes the progress bar with a completion message.
-    pub fn finish(&self) {
+    /// Closes the progress bar by finishing and clearing it.
+    pub fn close(&self) {
         self.bar.finish_and_clear();
-    }
-
-    /// Abandons the progress bar (for cancellation).
-    pub fn abandon(&self) {
-        self.bar.abandon();
     }
 }
 

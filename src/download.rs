@@ -166,6 +166,7 @@ use crate::url::ParsedUrl;
 use futures::stream::{self, StreamExt};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::signal;
 use tokio::sync::Semaphore;
 
 /// Cancellation token for cooperative shutdown.
@@ -229,36 +230,49 @@ pub async fn download_files(
         .collect();
 
     let mut task_stream = stream::iter(tasks).buffer_unordered(options.concurrency_limit);
+    let mut ctrl_c = std::pin::pin!(signal::ctrl_c());
 
-    while let Some((file_path, status)) = task_stream.next().await {
-        if cancelled.load(Ordering::Relaxed) && !result.cancelled {
-            result.cancelled = true;
-            progress.abandon();
-        }
+    loop {
+        tokio::select! {
+            biased;
 
-        match status {
-            DownloadStatus::Downloaded => {
-                result.downloaded += 1;
-                progress.set_current_file(&file_path);
+            _ = &mut ctrl_c => {
+                cancelled.store(true, Ordering::SeqCst);
+                result.cancelled = true;
+                progress.close();
+                break;
             }
-            DownloadStatus::Skipped => {
-                result.skipped += 1;
-            }
-            DownloadStatus::Failed(e) => {
-                result.failed += 1;
-                result.errors.push((file_path, e));
-            }
-            DownloadStatus::Cancelled => {}
-        }
 
-        if !result.cancelled {
-            progress.inc();
+            task_result = task_stream.next() => {
+                match task_result {
+                    Some((file_path, status)) => {
+                        match status {
+                            DownloadStatus::Downloaded => {
+                                result.downloaded += 1;
+                                progress.set_current_file(&file_path);
+                                progress.inc();
+                            }
+                            DownloadStatus::Skipped => {
+                                result.skipped += 1;
+                                progress.inc();
+                            }
+                            DownloadStatus::Failed(e) => {
+                                result.failed += 1;
+                                result.errors.push((file_path, e));
+                                progress.inc();
+                            }
+                            DownloadStatus::Cancelled => {}
+                        }
+                    }
+                    None => {
+                        progress.close();
+                        break;
+                    }
+                }
+            }
         }
     }
 
-    if !result.cancelled {
-        progress.finish();
-    }
     result
 }
 
