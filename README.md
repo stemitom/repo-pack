@@ -1,121 +1,83 @@
-# Repo-Pack
+# repo-pack
 
-<!--toc:start-->
-
-- [Repo-Pack](#repo-pack)
-  - [Features](#features)
-  - [Requirements](#requirements)
-  - [Installation](#installation)
-  - [Usage](#usage)
-    - [Example](#example)
-  - [Configuration](#configuration)
-  - [Contributing](#contributing)
-  - [License](#license)
-  <!--toc:end-->
-
-Repo-Pack is a Go-based tool designed to download files from a specified GitHub repository directory, preserving the directory structure relative to a specified base directory. It's particularly useful for cloning parts of a repository or extracting specific directories without the need to clone the entire project.
+Download files from GitHub repository directories, preserving directory structure.
 
 ## Features
 
-- Download files from public and private GitHub repositories
-- Preserve the directory structure starting from a specified base directory
-- Support for GitHub personal access tokens for private repositories
+- Download from public and private repositories
 - Concurrent downloads with configurable limits
-- Resume capability to skip already downloaded files
-- Dry-run mode to preview files before downloading
-- Custom output directory support
-- Verbose and quiet logging modes
-- Progress bar with real-time download statistics
-- Git LFS (Large File Storage) support
+- Git LFS support
+- Resume interrupted downloads
+- Dry-run mode to preview files
+- Progress bar with download statistics
 - Graceful cancellation with Ctrl+C
-- Comprehensive download summary
-
-## Requirements
-
-- Go 1.21.4 or higher
 
 ## Installation
 
-- For mac/linux:
-    `curl -LsSf https://dub.sh/repo-pack | sh`
-- For windows:
-    `curl -LsSf https://dub.sh/repo-pack-win | sh`
+```console
+$ curl -LsSf https://dub.sh/repo-pack | sh
+```
 
-## Building
+Or build from source:
 
-Clone the repository and build the binary:
-
-```bash
-git clone https://github.com/stemitom/repo-pack.git
-cd repo-pack
-go build -o repo-pack
+```console
+$ cargo install --path .
 ```
 
 ## Usage
 
-Run the tool with the required flags:
-
-```bash
-./repo-pack --url <repository_url> [OPTIONS]
+```console
+$ repo-pack <URL> [OPTIONS]
 ```
-
-### Required Flags
-
-- `--url`: The full URL to the GitHub repository directory you wish to download
-  - Example: `https://github.com/owner/repo/tree/main/path/to/directory`
-
-### Optional Flags
-
-- `--token <token>`: Your GitHub personal access token (required for private repositories)
-  - Can also be stored in `~/.github/token`
-- `--output <directory>`: Output directory for downloaded files (default: current directory)
-- `--limit <number>`: Maximum concurrent downloads (default: 5, max recommended: 100)
-- `--style <character>`: Progress bar style character (default: █)
-- `--dry-run`: Preview files without downloading them
-- `--resume`: Skip files that already exist locally
-- `--verbose`: Enable verbose output (shows each file being downloaded)
-- `--quiet`: Suppress non-error output
 
 ### Examples
 
-**Basic usage:**
-```bash
-./repo-pack --url https://github.com/JazzyGrim/dotfiles/tree/master/.config/nvim/lua
+Download a directory:
+
+```console
+$ repo-pack https://github.com/astral-sh/uv/tree/main/crates/uv-fs/src
 ```
 
-**Download to specific directory:**
-```bash
-./repo-pack --url https://github.com/owner/repo/tree/main/src --output ./my-project
+Download to a specific output directory:
+
+```console
+$ repo-pack https://github.com/owner/repo/tree/main/src -o ./my-project
 ```
 
-**Preview files before downloading (dry-run):**
-```bash
-./repo-pack --url https://github.com/owner/repo/tree/main/docs --dry-run
+Preview files without downloading:
+
+```console
+$ repo-pack https://github.com/owner/repo/tree/main/docs --dry-run
 ```
 
-**Resume interrupted download:**
-```bash
-./repo-pack --url https://github.com/owner/repo/tree/main/data --resume
+Resume an interrupted download:
+
+```console
+$ repo-pack https://github.com/owner/repo/tree/main/data --resume
 ```
 
-**Download from private repository:**
-```bash
-./repo-pack --url https://github.com/owner/private-repo/tree/main/config --token YOUR_TOKEN
+Download from a private repository:
+
+```console
+$ repo-pack https://github.com/owner/repo/tree/main/config --token ghp_xxxx
 ```
 
-**Verbose output with higher concurrency:**
-```bash
-./repo-pack --url https://github.com/owner/repo/tree/main/assets --limit 20 --verbose
-```
+### Options
 
-**Quiet mode (errors only):**
-```bash
-./repo-pack --url https://github.com/owner/repo/tree/main/files --quiet
-```
+| Option | Description |
+|--------|-------------|
+| `-o, --output <DIR>` | Output directory (default: `.`) |
+| `-l, --limit <NUM>` | Concurrent download limit (default: `5`) |
+| `-n, --dry-run` | Preview files without downloading |
+| `-r, --resume` | Skip files that already exist |
+| `-v, --verbose` | Show verbose output |
+| `-q, --quiet` | Suppress non-error output |
+| `--token <TOKEN>` | GitHub personal access token |
+| `--no-progress` | Disable progress bar |
 
 ## Configuration
 
-Repo-Pack automatically creates a configuration file at `~/.config/repo-pack/config.json` with default settings:
+Configuration is stored at `~/.config/repo-pack/config.json`:
 
 ```json
 {
@@ -125,13 +87,8 @@ Repo-Pack automatically creates a configuration file at `~/.config/repo-pack/con
 }
 ```
 
-You can manually edit this file to change default settings. Command-line flags will override these defaults.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a pull request or open an issue.
+If `--token` is not provided, repo-pack reads from `github_token_path`.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
+MIT

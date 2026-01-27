@@ -1,50 +1,146 @@
 #!/bin/sh
+set -eu
 
-# Set the repository and binary name
 REPO="stemitom/repo-pack"
-BINARY_NAME="repo-pack"
+BINARY="repo-pack"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+main() {
+    install_dir=$(get_install_dir)
+    platform=$(detect_platform)
+    
+    if [ -z "$platform" ]; then
+        err "unsupported platform: $(uname -s)-$(uname -m)"
+    fi
 
-# Check if the binary exists and delete it
-if [ -f "/usr/local/bin/${BINARY_NAME}" ]; then
-    echo -e "${YELLOW}Removing existing ${BINARY_NAME} binary...${NC}"
-    sudo rm "/usr/local/bin/${BINARY_NAME}"
-fi
+    version=$(get_latest_version)
+    if [ -z "$version" ]; then
+        err "failed to get latest version"
+    fi
 
-echo "${BLUE}Getting the latest release information...${NC}"
-LATEST_VERSION=$(curl -s https://api.github.com/repos/${REPO}/releases/latest | grep -o '"tag_name": ".*"' | awk -F'"' '{print $4}')
+    say "installing repo-pack $version for $platform"
 
-echo "${BLUE}Getting the machine architecture...${NC}"
-ARCH=$(uname -m)
-KERNEL=$(uname -s)
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
 
-echo "${GREEN}Downloading the binary...${NC}"
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${LATEST_VERSION}/${BINARY_NAME}_${KERNEL}_${ARCH}.tar.gz"
-curl -# -L -o "${BINARY_NAME}.tar.gz" "${DOWNLOAD_URL}"
+    url="https://github.com/$REPO/releases/download/$version/$BINARY-$platform"
+    say "downloading $url"
+    
+    download "$url" "$tmp/$BINARY"
 
-echo "${GREEN}Extracting the binary...${NC}"
-tar -xzf "${BINARY_NAME}.tar.gz"
+    mkdir -p "$install_dir"
+    chmod +x "$tmp/$BINARY"
+    mv "$tmp/$BINARY" "$install_dir/$BINARY"
 
-echo "${GREEN}Making the binary executable...${NC}"
-chmod +x "${BINARY_NAME}"
+    say "installed to $install_dir/$BINARY"
 
-printf "${YELLOW}Install the binary? (y/n) ${NC}"
-read -r INSTALL </dev/tty
+    if [ "${REPO_PACK_NO_MODIFY_PATH:-}" != "1" ]; then
+        add_to_path "$install_dir"
+    fi
+}
 
-if [ "$INSTALL" = "y" ]; then
-    echo "${GREEN}Installing the binary...${NC}"
-    sudo mv "${BINARY_NAME}" /usr/local/bin/
-else
-    echo "${RED}Skipping installation...${NC}"
-fi
+get_install_dir() {
+    if [ -n "${REPO_PACK_INSTALL_DIR:-}" ]; then
+        echo "$REPO_PACK_INSTALL_DIR"
+    elif [ -n "${XDG_BIN_HOME:-}" ]; then
+        echo "$XDG_BIN_HOME"
+    elif [ -n "${XDG_DATA_HOME:-}" ]; then
+        echo "$XDG_DATA_HOME/../bin"
+    else
+        echo "$HOME/.local/bin"
+    fi
+}
 
-echo "${GREEN}Cleaning up...${NC}"
-rm "${BINARY_NAME}.tar.gz"
+detect_platform() {
+    os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    arch=$(uname -m)
 
-echo "${GREEN}Done!${NC}"
+    case "$os" in
+        linux)
+            case "$arch" in
+                x86_64|amd64) echo "linux-x64" ;;
+                aarch64|arm64) echo "linux-arm64" ;;
+                *) return 1 ;;
+            esac
+            ;;
+        darwin)
+            case "$arch" in
+                x86_64|amd64) echo "macos-x64" ;;
+                aarch64|arm64) echo "macos-arm64" ;;
+                *) return 1 ;;
+            esac
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+get_latest_version() {
+    download "https://api.github.com/repos/$REPO/releases/latest" - 2>/dev/null | grep '"tag_name"' | cut -d'"' -f4
+}
+
+download() {
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$1" ${2:+-o "$2"}
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "${2:--}" "$1"
+    else
+        err "curl or wget required"
+    fi
+}
+
+add_to_path() {
+    _install_dir="$1"
+    
+    case ":$PATH:" in
+        *":$_install_dir:"*) return ;;
+    esac
+
+    if [ -n "${GITHUB_PATH:-}" ]; then
+        echo "$_install_dir" >> "$GITHUB_PATH"
+        return
+    fi
+
+    _env_dir="${XDG_CONFIG_HOME:-$HOME/.config}/repo-pack"
+    _env_file="$_env_dir/env"
+    
+    mkdir -p "$_env_dir"
+    cat > "$_env_file" << EOF
+# repo-pack shell setup
+case ":\$PATH:" in
+    *":$_install_dir:"*) ;;
+    *) export PATH="$_install_dir:\$PATH" ;;
+esac
+EOF
+
+    _source_line=". \"$_env_file\""
+    
+    for _profile in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc" "$HOME/.zshenv"; do
+        if [ -f "$_profile" ]; then
+            if ! grep -qF "$_env_file" "$_profile" 2>/dev/null; then
+                echo "$_source_line" >> "$_profile"
+            fi
+        fi
+    done
+
+    if [ -d "$HOME/.config/fish" ]; then
+        mkdir -p "$HOME/.config/fish/conf.d"
+        cat > "$HOME/.config/fish/conf.d/repo-pack.fish" << EOF
+if not contains "$_install_dir" \$PATH
+    set -gx PATH "$_install_dir" \$PATH
+end
+EOF
+    fi
+
+    say "added $_install_dir to PATH via $_env_file"
+    say "restart your shell or run: . \"$_env_file\""
+}
+
+say() {
+    printf '\033[0;32m%s\033[0m\n' "$*"
+}
+
+err() {
+    printf '\033[0;31merror: %s\033[0m\n' "$*" >&2
+    exit 1
+}
+
+main "$@"
