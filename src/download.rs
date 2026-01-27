@@ -142,6 +142,7 @@ pub struct DownloadResult {
     pub downloaded: u64,
     pub skipped: u64,
     pub failed: u64,
+    pub cancelled: bool,
     pub errors: Vec<(String, RepoPackError)>,
 }
 
@@ -158,33 +159,49 @@ use crate::progress::DownloadProgress;
 use crate::provider::GitHubProvider;
 use crate::url::ParsedUrl;
 use futures::stream::{self, StreamExt};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
+
+/// Cancellation token for cooperative shutdown.
+pub type CancellationToken = Arc<AtomicBool>;
 
 /// Downloads multiple files concurrently with progress reporting.
 ///
 /// Uses a semaphore to limit concurrent downloads. If `resume` is enabled,
-/// existing files are skipped. Returns aggregate results including any errors.
+/// existing files are skipped. Checks `cancelled` token between downloads
+/// for cooperative shutdown. Returns aggregate results including any errors.
 pub async fn download_files(
     provider: &GitHubProvider,
     parsed_url: &ParsedUrl,
     files: Vec<String>,
     options: DownloadOptions<'_>,
     progress: &DownloadProgress,
+    cancelled: &CancellationToken,
 ) -> DownloadResult {
     let semaphore = Arc::new(Semaphore::new(options.concurrency_limit));
+    let cancelled_inner = cancelled.clone();
     let mut result = DownloadResult::default();
 
     let tasks: Vec<_> = files
         .into_iter()
         .map(|file_path| {
             let semaphore = semaphore.clone();
+            let cancelled = cancelled_inner.clone();
             let base_dir = options.base_dir.to_string();
             let output_dir = options.output_dir.to_path_buf();
             let resume = options.resume;
 
             async move {
+                if cancelled.load(Ordering::Relaxed) {
+                    return (file_path, DownloadStatus::Cancelled);
+                }
+
                 let _permit = semaphore.acquire().await.expect("semaphore closed");
+
+                if cancelled.load(Ordering::Relaxed) {
+                    return (file_path, DownloadStatus::Cancelled);
+                }
 
                 if resume {
                     if let Ok(relative) = extract_relative_path(&base_dir, &file_path) {
@@ -211,6 +228,11 @@ pub async fn download_files(
     let mut task_stream = stream::iter(tasks).buffer_unordered(options.concurrency_limit);
 
     while let Some((file_path, status)) = task_stream.next().await {
+        if cancelled.load(Ordering::Relaxed) && !result.cancelled {
+            result.cancelled = true;
+            progress.abandon();
+        }
+
         match status {
             DownloadStatus::Downloaded => {
                 result.downloaded += 1;
@@ -225,11 +247,17 @@ pub async fn download_files(
                 result.failed += 1;
                 result.errors.push((file_path, e));
             }
+            DownloadStatus::Cancelled => {}
         }
-        progress.inc();
+
+        if !result.cancelled {
+            progress.inc();
+        }
     }
 
-    progress.finish();
+    if !result.cancelled {
+        progress.finish();
+    }
     result
 }
 
@@ -237,4 +265,5 @@ enum DownloadStatus {
     Downloaded,
     Skipped,
     Failed(RepoPackError),
+    Cancelled,
 }

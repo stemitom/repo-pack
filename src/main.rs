@@ -3,8 +3,11 @@ use clap::Parser;
 use miette::Result;
 use owo_colors::OwoColorize;
 use repo_pack::{
-    download_files, Cli, Config, DownloadOptions, DownloadProgress, GitHubProvider, ParsedUrl,
+    download_files, CancellationToken, Cli, Config, DownloadOptions, DownloadProgress,
+    GitHubProvider, ParsedUrl,
 };
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 #[tokio::main(flavor = "current_thread")]
@@ -58,6 +61,14 @@ async fn main() -> Result<()> {
     let total_files = files.len() as u64;
     let progress = DownloadProgress::new(total_files, cli.quiet > 0 || cli.no_progress);
 
+    let cancelled: CancellationToken = Arc::new(AtomicBool::new(false));
+    let cancelled_handler = cancelled.clone();
+
+    ctrlc::set_handler(move || {
+        cancelled_handler.store(true, Ordering::SeqCst);
+    })
+    .expect("failed to set Ctrl-C handler");
+
     let options = DownloadOptions {
         base_dir,
         output_dir: &cli.output,
@@ -67,8 +78,18 @@ async fn main() -> Result<()> {
     };
 
     let start = Instant::now();
-    let result = download_files(&provider, &parsed_url, files, options, &progress).await;
+    let result = download_files(&provider, &parsed_url, files, options, &progress, &cancelled).await;
     let duration = start.elapsed();
+
+    if result.cancelled {
+        let incomplete = total_files - result.downloaded - result.skipped;
+        eprintln!(
+            "\n{}: download cancelled with {} incomplete file(s)",
+            "cancelled".yellow().bold(),
+            incomplete
+        );
+        std::process::exit(1);
+    }
 
     print_summary(&result, total_files, duration, cli.quiet > 0);
 
