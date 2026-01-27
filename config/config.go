@@ -21,8 +21,8 @@ func DefaultConfig() Config {
 		homeDir = "~"
 	}
 	return Config{
-		ConcurrentDownloadLimit: 5,
-		ProgressBarStyle:        "█",
+		ConcurrentDownloadLimit: 50,
+		ProgressBarStyle:        "#",
 		GithubTokenPath:         filepath.Join(homeDir, ".github", "token"),
 	}
 }
