@@ -239,9 +239,7 @@ pub async fn download_files(
         match status {
             DownloadStatus::Downloaded => {
                 result.downloaded += 1;
-                if options.verbose {
-                    progress.set_current_file(&file_path);
-                }
+                progress.set_current_file(&file_path);
             }
             DownloadStatus::Skipped => {
                 result.skipped += 1;

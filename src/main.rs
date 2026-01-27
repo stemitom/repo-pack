@@ -33,6 +33,13 @@ async fn main() -> Result<()> {
     let mut parsed_url = ParsedUrl::parse(&cli.url)?;
     let provider = GitHubProvider::new()?;
 
+    if parsed_url.needs_default_branch() {
+        let default_branch = provider
+            .get_default_branch(&parsed_url.owner, &parsed_url.repo, cli.token.as_deref())
+            .await?;
+        parsed_url.set_git_ref(default_branch);
+    }
+
     let files = provider
         .list_files(&mut parsed_url, cli.token.as_deref())
         .await?;
@@ -61,7 +68,8 @@ async fn main() -> Result<()> {
         .unwrap_or(&parsed_url.dir);
 
     let total_files = files.len() as u64;
-    let progress = DownloadProgress::new(total_files, cli.quiet > 0 || cli.no_progress);
+    let silent = cli.quiet > 0 || cli.no_progress;
+    let progress = DownloadProgress::new(total_files, silent, cli.verbose > 0);
 
     let cancelled: CancellationToken = Arc::new(AtomicBool::new(false));
     let cancelled_handler = cancelled.clone();
@@ -158,7 +166,7 @@ mod tests {
         let parsed = ParsedUrl::parse(url).unwrap();
         assert_eq!(parsed.owner, "owner");
         assert_eq!(parsed.repo, "repo");
-        assert_eq!(parsed.git_ref, "main");
+        assert_eq!(parsed.git_ref(), "main");
         assert_eq!(parsed.dir, "path/to/dir");
     }
 
