@@ -3,11 +3,11 @@ use clap::Parser;
 use miette::Result;
 use owo_colors::OwoColorize;
 use repo_pack::{
-    download_files, CancellationToken, Cli, Config, DownloadOptions, DownloadProgress,
-    GitHubProvider, ParsedUrl,
+    CancellationToken, Cli, Config, DownloadOptions, DownloadProgress, GitHubProvider, ParsedUrl,
+    download_files,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 #[tokio::main(flavor = "current_thread")]
@@ -16,7 +16,9 @@ async fn main() -> Result<()> {
 
     let config = Config::load()?;
 
-    if cli.token.is_none() && let Some(token) = config.read_token() {
+    if cli.token.is_none()
+        && let Some(token) = config.read_token()
+    {
         cli.token = Some(token);
     }
 
@@ -78,7 +80,15 @@ async fn main() -> Result<()> {
     };
 
     let start = Instant::now();
-    let result = download_files(&provider, &parsed_url, files, options, &progress, &cancelled).await;
+    let result = download_files(
+        &provider,
+        &parsed_url,
+        files,
+        options,
+        &progress,
+        &cancelled,
+    )
+    .await;
     let duration = start.elapsed();
 
     if result.cancelled {
@@ -129,7 +139,11 @@ fn print_summary(
         parts.push(format!(", {} failed", result.failed.to_string().red()));
     }
 
-    parts.push(format!(" [{:.3}s]", duration.as_secs_f64()).dimmed().to_string());
+    parts.push(
+        format!(" [{:.3}s]", duration.as_secs_f64())
+            .dimmed()
+            .to_string(),
+    );
 
     println!("{}", parts.join(""));
 }

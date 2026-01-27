@@ -193,10 +193,13 @@ impl GitHubProvider {
             request = request.header("Authorization", format!("Bearer {token}"));
         }
 
-        let response = request.send().await.map_err(|e| RepoPackError::DownloadFailed {
-            path: endpoint.to_string(),
-            source: e,
-        })?;
+        let response = request
+            .send()
+            .await
+            .map_err(|e| RepoPackError::DownloadFailed {
+                path: endpoint.to_string(),
+                source: e,
+            })?;
 
         let status = response.status();
 
@@ -243,10 +246,13 @@ impl GitHubProvider {
             });
         }
 
-        response.json::<T>().await.map_err(|e| RepoPackError::DownloadFailed {
-            path: endpoint.to_string(),
-            source: e,
-        })
+        response
+            .json::<T>()
+            .await
+            .map_err(|e| RepoPackError::DownloadFailed {
+                path: endpoint.to_string(),
+                source: e,
+            })
     }
 
     /// Downloads a file from the repository, following Git LFS pointers if detected.

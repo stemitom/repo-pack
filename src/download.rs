@@ -4,7 +4,8 @@ use std::path::{Component, Path, PathBuf};
 
 /// Check if a path needs normalization (contains `.` or `..` components).
 fn needs_normalization(path: &Path) -> bool {
-    path.components().any(|c| matches!(c, Component::ParentDir | Component::CurDir))
+    path.components()
+        .any(|c| matches!(c, Component::ParentDir | Component::CurDir))
 }
 
 /// Normalize a path by resolving `.` and `..` components.
@@ -22,7 +23,10 @@ fn normalize_path(path: &Path) -> Cow<'_, Path> {
             }
             Component::ParentDir => {
                 // Pop the last component if it's a normal component
-                if matches!(normalized.components().next_back(), Some(Component::Normal(_))) {
+                if matches!(
+                    normalized.components().next_back(),
+                    Some(Component::Normal(_))
+                ) {
                     normalized.pop();
                 } else {
                     // Preserve leading `..` or `..` after root
@@ -46,22 +50,23 @@ fn normalize_path(path: &Path) -> Cow<'_, Path> {
 pub fn extract_relative_path(base_dir: &str, file_path: &str) -> Result<String, RepoPackError> {
     let base_path = Path::new(base_dir);
     let file_path_obj = Path::new(file_path);
-    
-    let (base_dir, file_path) = if needs_normalization(base_path) || needs_normalization(file_path_obj) {
-        let normalized_base = base_path
-            .components()
-            .collect::<PathBuf>()
-            .to_string_lossy()
-            .to_string();
-        let normalized_file = file_path_obj
-            .components()
-            .collect::<PathBuf>()
-            .to_string_lossy()
-            .to_string();
-        (normalized_base, normalized_file)
-    } else {
-        (base_dir.to_string(), file_path.to_string())
-    };
+
+    let (base_dir, file_path) =
+        if needs_normalization(base_path) || needs_normalization(file_path_obj) {
+            let normalized_base = base_path
+                .components()
+                .collect::<PathBuf>()
+                .to_string_lossy()
+                .to_string();
+            let normalized_file = file_path_obj
+                .components()
+                .collect::<PathBuf>()
+                .to_string_lossy()
+                .to_string();
+            (normalized_base, normalized_file)
+        } else {
+            (base_dir.to_string(), file_path.to_string())
+        };
 
     let separator = std::path::MAIN_SEPARATOR.to_string();
     let search_pattern = format!("{base_dir}{separator}");
@@ -159,8 +164,8 @@ use crate::progress::DownloadProgress;
 use crate::provider::GitHubProvider;
 use crate::url::ParsedUrl;
 use futures::stream::{self, StreamExt};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Semaphore;
 
 /// Cancellation token for cooperative shutdown.

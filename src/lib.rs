@@ -9,8 +9,8 @@ pub mod url;
 pub use cli::Cli;
 pub use config::Config;
 pub use download::{
-    download_files, extract_relative_path, save_file, CancellationToken, DownloadOptions,
-    DownloadResult,
+    CancellationToken, DownloadOptions, DownloadResult, download_files, extract_relative_path,
+    save_file,
 };
 pub use error::RepoPackError;
 pub use progress::DownloadProgress;
