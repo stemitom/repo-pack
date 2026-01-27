@@ -32,34 +32,40 @@ $ repo-pack <URL> [OPTIONS]
 
 ### Examples
 
-Download a directory:
+Download a directory (uses default branch automatically):
 
 ```console
-$ repo-pack https://github.com/astral-sh/uv/tree/main/crates/uv-fs/src
+$ repo-pack https://github.com/astral-sh/uv/crates/uv-fs/src
 ```
 
-Download to a specific output directory:
+Download entire repository:
 
 ```console
-$ repo-pack https://github.com/owner/repo/tree/main/src -o ./my-project
+$ repo-pack https://github.com/owner/repo
+```
+
+Download from a specific branch:
+
+```console
+$ repo-pack https://github.com/owner/repo/tree/dev/src
 ```
 
 Preview files without downloading:
 
 ```console
-$ repo-pack https://github.com/owner/repo/tree/main/docs --dry-run
+$ repo-pack https://github.com/owner/repo/docs --dry-run
 ```
 
 Resume an interrupted download:
 
 ```console
-$ repo-pack https://github.com/owner/repo/tree/main/data --resume
+$ repo-pack https://github.com/owner/repo/data --resume
 ```
 
 Download from a private repository:
 
 ```console
-$ repo-pack https://github.com/owner/repo/tree/main/config --token ghp_xxxx
+$ repo-pack https://github.com/owner/repo/config --token ghp_xxxx
 ```
 
 ### Options
