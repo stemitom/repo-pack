@@ -7,7 +7,7 @@ use repo_pack::{
     download_files,
 };
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 #[tokio::main(flavor = "current_thread")]
@@ -72,12 +72,6 @@ async fn main() -> Result<()> {
     let progress = DownloadProgress::new(total_files, silent, cli.verbose > 0);
 
     let cancelled: CancellationToken = Arc::new(AtomicBool::new(false));
-    let cancelled_handler = cancelled.clone();
-
-    ctrlc::set_handler(move || {
-        cancelled_handler.store(true, Ordering::SeqCst);
-    })
-    .expect("failed to set Ctrl-C handler");
 
     let options = DownloadOptions {
         base_dir,
@@ -100,7 +94,7 @@ async fn main() -> Result<()> {
     let duration = start.elapsed();
 
     if result.cancelled {
-        let incomplete = total_files - result.downloaded - result.skipped;
+        let incomplete = total_files - result.downloaded - result.skipped - result.failed;
         eprintln!(
             "\n{}: download cancelled with {} incomplete file(s)",
             "cancelled".yellow().bold(),
